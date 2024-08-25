@@ -20,7 +20,7 @@ def clk_x(x):
     return x if x == '' else canonical_smiles(x)
 
 
-def create_pred_dataset(data_path, verbose=True):
+def parse_uspto_condition_data(data_path, verbose=True):
     raw_info = pandas.read_csv(data_path)
     raw_info = raw_info.fillna('')
     all_x = set()
