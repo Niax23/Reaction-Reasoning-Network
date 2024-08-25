@@ -30,12 +30,13 @@ class ChemicalReactionNetwork:
         添加一个化学反应到网络中。
 
         参数:
-        - reaction_id (str): 化学反应的唯一标识符。
         - canonical_rxn (str): 化学反应的SMILES序列。
         """
+        if canonical_rxn in self.reaction_adj_list:
+            return
 
-        reactants_list, products_list = self.parse_smiles_reaction_to_list(
-            canonical_rxn)
+        reactants_list, products_list = \
+            self.parse_smiles_reaction_to_list(canonical_rxn)
 
         self.reaction_adj_list[canonical_rxn] = {
             "reactants": reactants_list,
@@ -64,9 +65,10 @@ class ChemicalReactionNetwork:
         从数据中构建化学反应网络。
 
         参数:
-        - data (dict): 反应数据字典,包含reaction_id和canonical_rxn。
+        - data (list): a list of reaction informations
+            containing canonical rxn of the smiles
         """
-        for reaction_id, reaction_data in data.items():
+        for reaction_data in data:
             canonical_rxn = reaction_data['canonical_rxn']
             self.add_reaction(canonical_rxn)
 
@@ -241,6 +243,9 @@ class ChemicalReactionNetwork:
 
         for x in reactions:
             required_mask[item2id[x][1]] = True
+
+        return molecules, edge_index, edge_types, \
+            molecule_mask, reaction_mask, required_mask
 
     def __str__(self):
         return f"ChemicalReactionNetwork with {len(self.substance_adj_list)}"\
