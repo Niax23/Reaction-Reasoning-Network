@@ -81,13 +81,11 @@ class ChemicalReactionNetwork:
         返回:
         - list: 相关化学反应的ID列表，或包含角色信息的列表。
         """
-        if role:
-            return [
-                entry['reaction_smiles'] for entry in
-                self.substance_adj_list.get(substance, [])
-                if entry['role'] == role
-            ]
-        return self.substance_adj_list.get(substance, [])
+        return [
+            entry['reaction_smiles'] for entry in
+            self.substance_adj_list.get(substance, [])
+            if role is None or entry['role'] == role
+        ]
 
     def get_reaction_substances(self, reaction_smiles, role=None):
         """
@@ -99,86 +97,10 @@ class ChemicalReactionNetwork:
         - list: 相关化学物质的SMILES列表。
         """
         role = ['reactants', 'products'] if role is None else [role]
-        return sum(
+        return sum([
             self.reaction_adj_list.get(reaction_smiles, {}).get(x, [])
             for x in role
-        )
-
-    def get_nhop_subgraph(self, start_vertex, n):
-        """
-        获取以某个反应为中心的n跳范围内的子图。
-        参数:
-        - start_vertex (str): 起始反应的SMILES序列。
-        - n (int): 跳数范围。
-        返回:
-        - tuple: 包含smiles_list, molecule_ids, reaction_ids, edge_index
-        """
-        if start_vertex not in self.reaction_adj_list:
-            raise ValueError(f"起始顶点 {start_vertex} 不是一个反应顶点。")
-
-        queue = deque([(start_vertex, 0)])  # 存储顶点和当前跳数
-        visited = set([start_vertex])
-        subgraph_vertices = set([start_vertex])
-        subgraph_edges = set()  # 使用集合避免重复边
-
-        while queue:
-            current_vertex, depth = queue.popleft()
-            print("depth: " + str(depth))
-            if depth <= n:
-                reactants = self.reaction_adj_list[current_vertex]["reactants"]
-                products = self.reaction_adj_list[current_vertex]["products"]
-
-                for substance in reactants + products:
-                    if substance not in visited:
-                        visited.add(substance)
-                        subgraph_vertices.add(substance)
-
-                    for entry in self.substance_adj_list[substance]:
-                        reaction_smiles = entry["reaction_smiles"]
-                        if reaction_smiles in visited:
-                            subgraph_edges.add(
-                                (substance, reaction_smiles, entry["role"]))
-                        elif depth + 1 <= n:
-                            queue.append((reaction_smiles, depth + 1))
-                            visited.add(reaction_smiles)
-                            subgraph_vertices.add(reaction_smiles)
-                            subgraph_edges.add(
-                                (substance, reaction_smiles, entry["role"]))
-        smiles_list = list(subgraph_vertices)
-        molecule_ids = [i for i, smiles in enumerate(
-            smiles_list) if smiles in self.substance_adj_list]
-        reaction_ids = [i for i, smiles in enumerate(
-            smiles_list) if smiles in self.reaction_adj_list]
-
-      # 构建 edge_index 和 edge_attr
-        edge_index = [[], []]
-        edge_attr_list = []
-        for source_smiles, target_smiles, role in subgraph_edges:
-            source_index = smiles_list.index(source_smiles)
-            target_index = smiles_list.index(target_smiles)
-            edge_index[0].append(source_index)
-            edge_index[1].append(target_index)
-            edge_index[1].append(source_index)
-            edge_index[0].append(target_index)
-
-            # 构建 edge_attr 对应的特征，这里 role 可以被替换为实际的边特征
-            edge_attr_list.append(role)  # 例如，role 可以是 "reactant" 或 "product"
-            edge_attr_list.append(role)
-
-        edge_index = torch.tensor(edge_index, dtype=torch.long)  # 转换为张量
-        edge_attr = torch.tensor(
-            edge_attr_list, dtype=torch.float)  # 你可以根据实际需要调整数据类型
-
-        return {
-            "smiles_list": smiles_list,
-            "molecule_ids": molecule_ids,
-            "reaction_ids": reaction_ids,
-            "edge_index": edge_index,
-            "edge_attr": edge_attr
-        }
-
-    def sample_batch(self, reactions, hop):
-        return [self.get_nhop_subgraph(reaction, hop) for reaction in reactions]
+        ], [])
 
     def sample_multiple_subgraph(self, reactions, hop):
         assert all(x in self.reaction_adj_list for x in reactions),\

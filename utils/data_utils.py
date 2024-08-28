@@ -1,7 +1,8 @@
-import pandas as pd
+import pandas
 import json
 import os
-
+from tqdm import tqdm
+from .chemistry_utils import canonical_smiles
 
 def edit(smiles_sequence):
     # 将SMILES序列分成三个部分：反应物、中间体、产物
