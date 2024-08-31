@@ -25,16 +25,27 @@ def resplit(moles):
             mlist.append(x)
 
     if len(pos_charge) > 0 and len(neg_charge) > 0:
-        if len(set(pos_charge)) != 1 or len(set(neg_charge)) != 1:
+        if len(set(pos_charge)) != 1 and len(set(neg_charge)) != 1:
             return False, []
         elif sum(t[1] for t in pos_charge) +\
                 sum(t[1] for t in neg_charge) != 0:
-            mlist.extend([t[0] for t in pos_charge])
-            mlist.extend([t[0] for t in neg_charge])
+            return False, []
         else:
-            this_mol = [t[0] for t in pos_charge] + \
-                [t[0] for t in neg_charge]
-            mlist.append('.'.join(this_mol))
+            pos_charge.sort(lambda t: t[1])
+            neg_charge.sort(lambda t: -t[1])
+            point1, point2, cmol, csum = 0, 0, [], 0
+            while point1 < len(pos_charge) or point2 < len(neg_charge):
+                if csum <= 0:
+                    cmol.append(pos_charge[point1][0])
+                    csum += pos_charge[point1][1]
+                    point1 += 1
+                else:
+                    cmol.append(neg_charge[point2][0])
+                    csum += neg_charge[point2][1]
+                    point2 += 1
+                if csum == 0:
+                    mlist.append('.'.join(cmol))
+                    cmol = []
     else:
         mlist.extend([t[0] for t in pos_charge])
         mlist.extend([t[0] for t in neg_charge])
@@ -115,7 +126,7 @@ if __name__ == '__main__':
 
     df = pandas.read_csv(args.input_file)
     df = df.fillna('')
-    out_data, unsplit_rows, nomain_rows, nobel = [], [], [], []
+    out_data, unsplit_rows, nomain_rows = [], [], []
 
     substance_to_cat = {}
 
@@ -150,7 +161,8 @@ if __name__ == '__main__':
                         'shared_list': shared_list,
                     },
                     'source': row['source'],
-                    'dataset': row['dataset']
+                    'dataset': row['dataset'],
+                    'index': i
                 }
 
                 update_mol(row['catalyst1'], substance_to_cat, 'catalyst')
@@ -163,18 +175,20 @@ if __name__ == '__main__':
         else:
             unsplit_rows.append(row)
 
+    print('[INFO] unsplited num:', len(unsplit_rows))
     if len(unsplit_rows) > 0:
         unsplit_df = pandas.DataFrame(unsplit_rows)
         unsplit_path = os.path.join(args.output_dir, 'unsplit.csv')
         unsplit_df.to_csv(unsplit_path, index=False)
 
+    print('[INFO] nomain_rows:', len(nomain_rows))
     if len(nomain_rows) > 0:
         nomain_df = pandas.DataFrame(nomain_rows)
         nomain_path = os.path.join(args.output_dir, 'no_reaction.csv')
         nomain_df.to_csv(nomain_path, index=False)
 
-    real_out = []
-    for line in out_data:
+    real_out, nobel = [], []
+    for line in tqdm(out_data):
         bingo = False
         catalyst = None if line['old']['catalyst'] == '' \
             else canonical_smiles(line['old']['catalyst'])
@@ -218,7 +232,7 @@ if __name__ == '__main__':
                 break
 
         if bingo:
-            nobel.append(line['source'])
+            nobel.append(line['index'])
         else:
             line['new'].update({
                 'catalyst': '' if catalyst is None else catalyst,
@@ -229,4 +243,8 @@ if __name__ == '__main__':
             })
             real_out.append(line)
 
-    
+    print('[INFO] no belong:', len(nobel))
+    if len(nobel) > 0:
+        x_source = df.iloc[nobel]
+        nobel_path = os.path.join(args.output_dir, 'nobelong.csv')
+        x_source.to_csv(nobel_path, index=False)
