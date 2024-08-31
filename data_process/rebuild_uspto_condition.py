@@ -132,14 +132,14 @@ if __name__ == '__main__':
                     'full_prod_list': prod_list,
                     'old_canonical_rxn': row['canonical_rxn'],
                     'canonical_rxn': new_rxn,
-                    'catalyst': row['catalyst'],
+                    'catalyst': row['catalyst1'],
                     'reagent1': row['reagent1'],
                     'solvent1': row['solvent1'],
                     'reagent2': row['reagent2'],
                     'solvent2': row['solvent2'],
                 }
 
-                update_mol(row['catalyst'], substance_to_cat, 'catalyst')
+                update_mol(row['catalyst1'], substance_to_cat, 'catalyst')
                 update_mol(row['reagent1'], substance_to_cat, 'reagent')
                 update_mol(row['reagent2'], substance_to_cat, 'reagent')
                 update_mol(row['solvent1'], substance_to_cat, 'solvent')
@@ -152,3 +152,8 @@ if __name__ == '__main__':
         unsplit_df = pandas.DataFrame(unsplit_rows)
         unsplit_path = os.path.join(args.output_dir, 'unsplit.csv')
         unsplit_df.to_csv(unsplit_path, index=False)
+
+    if len(nomain_rows) > 0:
+        nomain_df = pandas.DataFrame(nomain_rows)
+        nomain_path = os.path.join(args.output_dir, 'no_reaction.csv')
+        nomain_df.to_csv(nomain_path, index=False)
