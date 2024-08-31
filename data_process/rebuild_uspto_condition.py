@@ -1,7 +1,10 @@
+import pandas
 import os
 import rdkit
 from rdkit import Chem
 import argparse
+
+from tqdm import tqdm
 
 
 def canonical_smiles(x):
@@ -98,7 +101,10 @@ if __name__ == '__main__':
     df = df.fillna('')
     out_data, unsplit_rows, nomain_rows = {}, [], []
 
-    for i, row in df.iterrows():
+    substance_to_cat = {}
+
+    for i in tqdm(range(len(df))):
+        row = df.iloc[i]
         reac, prod = row['canonical_rxn'].split('>>')
         reac_success, reac_list = resplit(reac)
         prod_success, prod_list = resplit(prod)
