@@ -96,6 +96,14 @@ def update_mol(x, dt, ix):
     dt[x][ix] += 1
 
 
+def getx_belong(dt, x):
+    answer, rx = None, None
+    for k, v in dt.get(x, {}).items():
+        if v != 0 and (answer is None or v > rx):
+            answer, rx = k, v
+    return answer
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_file', required=True)
@@ -107,7 +115,7 @@ if __name__ == '__main__':
 
     df = pandas.read_csv(args.input_file)
     df = df.fillna('')
-    out_data, unsplit_rows, nomain_rows, nobel = {}, [], [], []
+    out_data, unsplit_rows, nomain_rows, nobel = [], [], [], []
 
     substance_to_cat = {}
 
@@ -125,18 +133,24 @@ if __name__ == '__main__':
             else:
                 new_rxn = f'{".".join(new_reac)}>>{".".join(new_prod)}'
                 data = {
-                    'reac_list': new_reac,
-                    'prod_list': new_prod,
-                    'shared_list': shared_list,
-                    'full_reac_list': reac_list,
-                    'full_prod_list': prod_list,
-                    'old_canonical_rxn': row['canonical_rxn'],
-                    'canonical_rxn': new_rxn,
-                    'catalyst': row['catalyst1'],
-                    'reagent1': row['reagent1'],
-                    'solvent1': row['solvent1'],
-                    'reagent2': row['reagent2'],
-                    'solvent2': row['solvent2'],
+                    'old': {
+                        'reac_list': reac_list,
+                        'prod_list': prod_list,
+                        'canonical_rxn': row['canonical_rxn'],
+                        'catalyst': row['catalyst1'],
+                        'reagent1': row['reagent1'],
+                        'solvent1': row['solvent1'],
+                        'reagent2': row['reagent2'],
+                        'solvent2': row['solvent2'],
+                    },
+                    'new': {
+                        'canonical_rxn': new_rxn,
+                        'reac_list': new_reac,
+                        'prod_list': new_prod,
+                        'shared_list': shared_list,
+                    },
+                    'source': row['source'],
+                    'dataset': row['dataset']
                 }
 
                 update_mol(row['catalyst1'], substance_to_cat, 'catalyst')
@@ -144,6 +158,7 @@ if __name__ == '__main__':
                 update_mol(row['reagent2'], substance_to_cat, 'reagent')
                 update_mol(row['solvent1'], substance_to_cat, 'solvent')
                 update_mol(row['solvent2'], substance_to_cat, 'solvent')
+                out_data.append(data)
 
         else:
             unsplit_rows.append(row)
@@ -157,3 +172,61 @@ if __name__ == '__main__':
         nomain_df = pandas.DataFrame(nomain_rows)
         nomain_path = os.path.join(args.output_dir, 'no_reaction.csv')
         nomain_df.to_csv(nomain_path, index=False)
+
+    real_out = []
+    for line in out_data:
+        bingo = False
+        catalyst = None if line['old']['catalyst'] == '' \
+            else canonical_smiles(line['old']['catalyst'])
+
+        reagent1 = None if line['old']['reagent1'] == ''\
+            else canonical_smiles(line['old']['reagent1'])
+        reagent2 = None if line['old']['reagent2'] == ''\
+            else canonical_smiles(line['old']['reagent2'])
+
+        solvent1 = None if line['old']['solvent1'] == ''\
+            else canonical_smiles(line['old']['solvent1'])
+        solvent2 = None if line['old']['solvent2'] == ''\
+            else canonical_smiles(line['old']['solvent2'])
+
+        for x in line['new']['shared_list']:
+            tans = getx_belong(substance_to_cat, x)
+            if tans == 'catalyst':
+                if x == catalyst or catalyst is None:
+                    catalyst = x
+                else:
+                    bingo = True
+                    break
+            elif tans == 'reagent':
+                if x == reagent1 or reagent1 is None:
+                    reagent1 = x
+                elif x == reagent2 or reagent2 is None:
+                    reagent2 = x
+                else:
+                    bingo = True
+                    break
+            elif tans == 'solvent':
+                if x == solvent1 or solvent1 is None:
+                    solvent1 = x
+                elif solvent2 == x or solvent2 is None:
+                    solvent2 = x
+                else:
+                    bingo = True
+                    break
+            else:
+                bingo = True
+                break
+
+        if bingo:
+            nobel.append(line['source'])
+        else:
+            line['new'].update({
+                'catalyst': '' if catalyst is None else catalyst,
+                'reagent1': '' if reagent1 is None else reagent1,
+                'reagent2': '' if reagent2 is None else reagent2,
+                'solvent1': '' if solvent1 is None else solvent1,
+                'solvent2': '' if solvent2 is None else solvent2
+            })
+            real_out.append(line)
+
+    
