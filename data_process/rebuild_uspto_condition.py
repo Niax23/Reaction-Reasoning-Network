@@ -22,7 +22,7 @@ def resplit(moles):
         elif total_charge < 0:
             neg_charge.append((x, total_charge))
         else:
-            mlist.append(x)
+            mlist.append(canonical_smiles(x))
 
     if len(pos_charge) > 0 and len(neg_charge) > 0:
         if len(set(pos_charge)) != 1 and len(set(neg_charge)) != 1:
@@ -44,11 +44,11 @@ def resplit(moles):
                     csum += neg_charge[point2][1]
                     point2 += 1
                 if csum == 0:
-                    mlist.append('.'.join(cmol))
+                    mlist.append(canonical_smiles('.'.join(cmol)))
                     cmol = []
     else:
-        mlist.extend([t[0] for t in pos_charge])
-        mlist.extend([t[0] for t in neg_charge])
+        mlist.extend([canonical_smiles(t[0]) for t in pos_charge])
+        mlist.extend([canonical_smiles(t[0]) for t in neg_charge])
 
     return True, mlist
 
