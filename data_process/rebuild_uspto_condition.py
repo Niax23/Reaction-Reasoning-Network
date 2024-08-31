@@ -46,6 +46,7 @@ def resplit(moles):
                 if csum == 0:
                     mlist.append(canonical_smiles('.'.join(cmol)))
                     cmol = []
+            assert csum == 0 and cmol == [], "Wrong Matching"
     else:
         mlist.extend([canonical_smiles(t[0]) for t in pos_charge])
         mlist.extend([canonical_smiles(t[0]) for t in neg_charge])
