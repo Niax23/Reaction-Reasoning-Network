@@ -31,8 +31,8 @@ def resplit(moles):
                 sum(t[1] for t in neg_charge) != 0:
             return False, []
         else:
-            pos_charge.sort(lambda t: t[1])
-            neg_charge.sort(lambda t: -t[1])
+            pos_charge.sort(key=lambda t: t[1])
+            neg_charge.sort(key=lambda t: -t[1])
             point1, point2, cmol, csum = 0, 0, [], 0
             while point1 < len(pos_charge) or point2 < len(neg_charge):
                 if csum <= 0:
