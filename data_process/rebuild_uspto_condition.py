@@ -88,6 +88,14 @@ def recheck(reac_list, prod_list, shared_list, rxn):
     return True
 
 
+def update_mol(x, dt, ix):
+    if x == '':
+        return
+    if x not in dt:
+        dt[x] = {'catalyst': 0, 'reagent': 0, 'solvent': 0}
+    dt[x][ix] += 1
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_file', required=True)
@@ -99,7 +107,7 @@ if __name__ == '__main__':
 
     df = pandas.read_csv(args.input_file)
     df = df.fillna('')
-    out_data, unsplit_rows, nomain_rows = {}, [], []
+    out_data, unsplit_rows, nomain_rows, nobel = {}, [], [], []
 
     substance_to_cat = {}
 
@@ -110,11 +118,37 @@ if __name__ == '__main__':
         prod_success, prod_list = resplit(prod)
 
         if reac_success and prod_success:
-            pass
+            main_product = get_main_product(prod_list)
+            new_reac, new_prod, shared_list = split_equal(reac_list, prod_list)
+            if main_product in shared_list:
+                nomain_rows.append(row)
+            else:
+                new_rxn = f'{".".join(new_reac)}>>{".".join(new_prod)}'
+                data = {
+                    'reac_list': new_reac,
+                    'prod_list': new_prod,
+                    'shared_list': shared_list,
+                    'full_reac_list': reac_list,
+                    'full_prod_list': prod_list,
+                    'old_canonical_rxn': row['canonical_rxn'],
+                    'canonical_rxn': new_rxn,
+                    'catalyst': row['catalyst'],
+                    'reagent1': row['reagent1'],
+                    'solvent1': row['solvent1'],
+                    'reagent2': row['reagent2'],
+                    'solvent2': row['solvent2'],
+                }
+
+                update_mol(row['catalyst'], substance_to_cat, 'catalyst')
+                update_mol(row['reagent1'], substance_to_cat, 'reagent')
+                update_mol(row['reagent2'], substance_to_cat, 'reagent')
+                update_mol(row['solvent1'], substance_to_cat, 'solvent')
+                update_mol(row['solvent2'], substance_to_cat, 'solvent')
+
         else:
             unsplit_rows.append(row)
 
     if len(unsplit_rows) > 0:
         unsplit_df = pandas.DataFrame(unsplit_rows)
         unsplit_path = os.path.join(args.output_dir, 'unsplit.csv')
-        unsplit_df.to(unsplit_path, index=False)
+        unsplit_df.to_csv(unsplit_path, index=False)
