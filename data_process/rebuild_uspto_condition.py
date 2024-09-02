@@ -105,6 +105,7 @@ def recheck(reac_list, prod_list, shared_list, rxn):
 def update_mol(x, dt, ix):
     if x == '':
         return
+    x = canonical_smiles(x)
     if x not in dt:
         dt[x] = {'catalyst': 0, 'reagent': 0, 'solvent': 0}
     dt[x][ix] += 1
@@ -146,7 +147,9 @@ if __name__ == '__main__':
             if main_product in shared_list:
                 nomain_rows.append(row)
             else:
-                new_rxn = f'{".".join(new_reac)}>>{".".join(new_prod)}'
+                cano_new_reac = canonical_smiles('.'.join(new_reac))
+                cano_new_prod = canonical_smiles('.'.join(new_prod))
+                new_rxn = f'{cano_new_reac}>>{cano_new_prod}'
                 data = {
                     'old': {
                         'reac_list': reac_list,

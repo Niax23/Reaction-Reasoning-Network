@@ -14,36 +14,23 @@ class ChemicalReactionNetwork:
         self.reaction_adj_list = {}   # 化学反应的邻接表
         self.build(data)
 
-    def parse_smiles_reaction_to_list(self, smiles_reaction):
-        try:
-            reactants, products = smiles_reaction.split('>>')
-            reactants_list = reactants.split('.')
-            products_list = products.split('.')
-            unique_reactants_list = list(set(reactants_list))
-            unique_products_list = list(set(products_list))
-            return unique_reactants_list, unique_products_list
-        except ValueError:
-            raise ValueError("输入的SMILES序列格式不正确，无法找到 '>>' 分隔符。")
-
-    def add_reaction(self, canonical_rxn):
+    def add_reaction(self, reaction_info):
         """
         添加一个化学反应到网络中。
 
         参数:
         - canonical_rxn (str): 化学反应的SMILES序列。
         """
-        if canonical_rxn in self.reaction_adj_list:
+
+        if reaction_info['canonical_rxn'] in self.reaction_adj_list:
             return
 
-        reactants_list, products_list = \
-            self.parse_smiles_reaction_to_list(canonical_rxn)
-
         self.reaction_adj_list[canonical_rxn] = {
-            "reactants": reactants_list,
-            "products": products_list
+            "reactants": reaction_info['reac_list'],
+            "products": reaction_info['prod_list']
         }
 
-        for reactant in reactants_list:
+        for reactant in reaction_info['reac_list']:
             if reactant not in self.substance_adj_list:
                 self.substance_adj_list[reactant] = []
 
@@ -52,7 +39,7 @@ class ChemicalReactionNetwork:
                 "role": "reactant"
             })
 
-        for product in products_list:
+        for product in reaction_info['prod_list']:
             if product not in self.substance_adj_list:
                 self.substance_adj_list[product] = []
             self.substance_adj_list[product].append({
