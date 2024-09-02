@@ -6,7 +6,7 @@ from rdkit import Chem
 import argparse
 
 from tqdm import tqdm
-from rxnmapper import BatchMapper
+from rxnmapper import BatchedMapper
 
 
 def canonical_smiles(x):
@@ -253,7 +253,7 @@ if __name__ == '__main__':
         nobel_path = os.path.join(args.output_dir, 'nobelong.csv')
         x_source.to_csv(nobel_path, index=False)
 
-    batch_mapper = BatchMapper()
+    batch_mapper = BatchedMapper()
 
     rxns = [x['new']['canonical_rxn'] for x in real_out]
 
