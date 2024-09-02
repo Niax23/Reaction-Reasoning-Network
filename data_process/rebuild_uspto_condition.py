@@ -1,3 +1,4 @@
+import json
 import pandas
 import os
 import rdkit
@@ -5,6 +6,7 @@ from rdkit import Chem
 import argparse
 
 from tqdm import tqdm
+from rxnmapper import BatchMapper
 
 
 def canonical_smiles(x):
@@ -120,6 +122,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_file', required=True)
     parser.add_argument('--output_dir', required=True)
+    parser.add_argument('--batch_size', default=32, type=int)
     args = parser.parse_args()
 
     if not os.path.exists(args.output_dir):
@@ -249,3 +252,16 @@ if __name__ == '__main__':
         x_source = df.iloc[nobel]
         nobel_path = os.path.join(args.output_dir, 'nobelong.csv')
         x_source.to_csv(nobel_path, index=False)
+
+    batch_mapper = BatchMapper()
+
+    rxns = [x['new']['canonical_rxn'] for x in real_out]
+
+    results = list(rxn_mapper.map_reactions_with_info(rxns))
+
+    for idx, p in enumerate(results):
+        real_out[idx]['new'].update(p)
+
+    final_out_path = os.path.join(args.output_dir, 'clean_results.json')
+    with open(final_out_path, 'w') as Fout:
+        json.dump(real_out, Fout, indent=4)
