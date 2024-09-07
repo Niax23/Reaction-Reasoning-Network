@@ -66,15 +66,12 @@ def get_main_product(product_list):
 
 
 def split_equal(reac_list, prod_list):
-    cano_reac_list = [canonical_smiles(x) for x in reac_list]
-    cano_prod_list = [canonical_smiles(x) for x in prod_list]
-
     reac_cnter, prod_cnter, shared_list = {}, {}, []
 
-    for x in cano_reac_list:
+    for x in reac_list:
         reac_cnter[x] = reac_cnter.get(x, 0) + 1
 
-    for x in cano_prod_list:
+    for x in prod_list:
         prod_cnter[x] = prod_cnter.get(x, 0) + 1
 
     for k, v in reac_cnter.items():
@@ -256,11 +253,11 @@ if __name__ == '__main__':
         nobel_path = os.path.join(args.output_dir, 'nobelong.csv')
         x_source.to_csv(nobel_path, index=False)
 
-    batch_mapper = BatchedMapper()
+    batch_mapper = BatchedMapper(batch_size=args.batch_size)
 
     rxns = [x['new']['canonical_rxn'] for x in real_out]
 
-    results = list(rxn_mapper.map_reactions_with_info(rxns))
+    results = list(batch_mapper.map_reactions_with_info(rxns))
 
     for idx, p in enumerate(results):
         real_out[idx]['new'].update(p)
