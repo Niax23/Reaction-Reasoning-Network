@@ -3,6 +3,8 @@ import pandas
 import json
 from tqdm import tqdm
 
+import argparse
+
 
 def split_reac_reag(mapped_rxn):
     reac, prod = mapped_rxn.split('>>')
@@ -81,29 +83,35 @@ def check(reac, reag, oldx):
     return newx == clear_map_number(oldx)
 
 
-for model in ['train.csv', 'val.csv', 'test.csv']:
-    out_infos = []
-    raw_info = pandas.read_csv(model)
-    raw_info = raw_info.to_dict('records')
-    for idx, ele in enumerate(tqdm(raw_info)):
-        mapped_rxn = ele['mapped_rxn']
-        old_reac, prod = mapped_rxn.split('>>')
-        rxn_with_frag = ele['canonical_rxn_with_fragment_info']
-        reac, reag = split_reac_reag(mapped_rxn)
-        new_reac, new_reag = resplit_reag(reac, reag, rxn_with_frag)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser('Parser')
+    parser.add_argument('--data_dir', required=True)
+    args = parser.parse_args()
 
-        if not check('.'.join(new_reac), '.'.join(new_reag), old_reac):
-            print('map_rxn', mapped_rxn)
-            print('new_reac', new_reac)
-            print('reag_list', new_reag)
-            print('prod', prod)
-            exit()
-        tline = {
-            'new_mapped_rxn': f'{".".join(new_reac)}>>{prod}',
-            'reagent_list': new_reag,
-            'new_reac_list': new_reac
-        }
-        tline.update(ele)
-        out_infos.append(tline)
-    with open(model.replace('.csv', '.json'), 'w') as Fout:
-        json.dump(out_infos, Fout, indent=4)
+    for model in ['train.csv', 'val.csv', 'test.csv']:
+        out_infos = []
+        raw_info = pandas.read_csv(os.path.join(args.data_dir, model))
+        raw_info = raw_info.to_dict('records')
+        for idx, ele in enumerate(tqdm(raw_info)):
+            mapped_rxn = ele['mapped_rxn']
+            old_reac, prod = mapped_rxn.split('>>')
+            rxn_with_frag = ele['canonical_rxn_with_fragment_info']
+            reac, reag = split_reac_reag(mapped_rxn)
+            new_reac, new_reag = resplit_reag(reac, reag, rxn_with_frag)
+
+            if not check('.'.join(new_reac), '.'.join(new_reag), old_reac):
+                print('map_rxn', mapped_rxn)
+                print('new_reac', new_reac)
+                print('reag_list', new_reag)
+                print('prod', prod)
+                exit()
+            tline = {
+                'new_mapped_rxn': f'{".".join(new_reac)}>>{prod}',
+                'reagent_list': new_reag,
+                'new_reac_list': new_reac
+            }
+            tline.update(ele)
+            out_infos.append(tline)
+        out_path = os.path.join(args.data_dir, model.replace('.csv', '.json'))
+        with open(out_path, 'w') as Fout:
+            json.dump(out_infos, Fout, indent=4)
