@@ -22,7 +22,8 @@ class ChemicalReactionNetwork:
         - canonical_rxn (str): 化学反应的SMILES序列。
         """
 
-        if reaction_info['canonical_rxn'] in self.reaction_adj_list:
+        canonical_rxn = reaction_info['canonical_rxn']
+        if canonical_rxn in self.reaction_adj_list:
             return
 
         self.reaction_adj_list[canonical_rxn] = {
@@ -56,8 +57,7 @@ class ChemicalReactionNetwork:
             containing canonical rxn of the smiles
         """
         for reaction_data in data:
-            canonical_rxn = reaction_data['canonical_rxn']
-            self.add_reaction(canonical_rxn)
+            self.add_reaction(reaction_data)
 
     def get_substance_neighbors(self, substance, role=None):
         """

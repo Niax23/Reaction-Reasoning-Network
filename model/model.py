@@ -1,5 +1,4 @@
 import torch
-from .backbones import GATBase, RxnNetworkGNN
 
 
 def graph2batch(
@@ -14,12 +13,13 @@ def graph2batch(
 
 class MyModel(nn.Module):
     def __init__(
-        self, gnn1_args, gnn2_args, molecule_dim, net_dim,
-        heads, dropout, dec_layers, n_words
+        self, gnn1, gnn2, PE, molecule_dim, net_dim,
+        heads, dropout, dec_layers, n_words, fix_len=None
     ):
         super(MyModel, self).__init__()
-        self.gnn1 = GATBase(**gnn1_args)  # 第一个GNN模型
-        self.gnn2 = RxnNetworkGNN(**gnn2_args)  # 第二个GNN模型
+        self.PE = PE
+        self.gnn1 = gnn1  # 第一个GNN模型
+        self.gnn2 = gnn2  # 第二个GNN模型
         self.pool_keys = torch.nn.Parameter(torch.randn(1, 1, net_dim))
         self.edge_emb = torch.nn.ParameterDict({
             'reactant': torch.nn.Parameter(torch.randn(net_dim)),
@@ -38,6 +38,10 @@ class MyModel(nn.Module):
         self.molecule_dim = molecule_dim
         self.net_dim = net_dim
         self.word_emb = torch.nn.Embedding(n_words, net_dim)
+        self.fix_len = fix_len
+        if self.fix_len is not None:
+            init_w_fix = torch.randn(fix_len - 1, net_dim)
+            self.fix_emb = torch.nn.Parameter(init_w_fix)
 
     def encode(
         self, molecules, molecule_mask, reaction_mask, required_mask,

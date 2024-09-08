@@ -12,7 +12,7 @@ def clk_x(x):
 
 def parse_uspto_condition_data(data_path, verbose=True):
     with open(data_path) as Fin:
-        raw_info = json.load(data_path)
+        raw_info = json.load(Fin)
     all_x = set()
     iterx = tqdm(raw_info) if verbose else raw_info
     for i, element in enumerate(iterx):
@@ -36,7 +36,7 @@ def parse_uspto_condition_data(data_path, verbose=True):
     for i, element in enumerate(iterx):
         rxn_type = element['dataset']
         labels = [
-            name2idx[clk_x(element['new']['catalyst1'])],
+            name2idx[clk_x(element['new']['catalyst'])],
             name2idx[clk_x(element['new']['solvent1'])],
             name2idx[clk_x(element['new']['solvent2'])],
             name2idx[clk_x(element['new']['reagent1'])],
