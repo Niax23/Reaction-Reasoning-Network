@@ -80,8 +80,8 @@ class MyModel(nn.Module):
         return seq_output
 
     def forward(
-        self, molecules, molecule_mask, reaction_mask, required_mask,
-        edge_index, edge_types, labels, attn_mask, key_padding_mask=None
+        self, molecules, molecule_mask, reaction_mask, required_mask, edge_index,
+        edge_types, labels, attn_mask, key_padding_mask=None, seq_types=None
     ):
         reaction_embs = self.encode(
             molecules, molecule_mask, reaction_mask,
@@ -90,6 +90,6 @@ class MyModel(nn.Module):
 
         result = self.decode(
             reaction_embs, labels, attn_mask,
-            key_padding_mask=key_padding_mask
+            key_padding_mask=key_padding_mask, seq_types=seq_types
         )
         return result
