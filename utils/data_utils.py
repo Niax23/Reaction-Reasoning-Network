@@ -30,7 +30,6 @@ def parse_uspto_condition_data(data_path, verbose=True):
     all_data = {'train_data': [], 'val_data': [], 'test_data': []}
     name2idx = {k: idx for idx, k in enumerate(all_x)}
     cls_idx = len(name2idx)
-    name2idx['<CLS>'] = cls_idx
 
     iterx = tqdm(raw_info) if verbose else raw_info
     for i, element in enumerate(iterx):

@@ -13,11 +13,11 @@ def graph2batch(
 
 class MyModel(nn.Module):
     def __init__(
-        self, gnn1, gnn2, PE, molecule_dim, net_dim,
-        heads, dropout, dec_layers, n_words, fix_len=None
+        self, gnn1, gnn2, PE, molecule_dim, net_dim, heads, dropout,
+        dec_layers, n_words, with_type=False, ntypes=None
     ):
         super(MyModel, self).__init__()
-        self.PE = PE
+        self.pos_enc = PE
         self.gnn1 = gnn1  # 第一个GNN模型
         self.gnn2 = gnn2  # 第二个GNN模型
         self.pool_keys = torch.nn.Parameter(torch.randn(1, 1, net_dim))
@@ -38,10 +38,10 @@ class MyModel(nn.Module):
         self.molecule_dim = molecule_dim
         self.net_dim = net_dim
         self.word_emb = torch.nn.Embedding(n_words, net_dim)
-        self.fix_len = fix_len
-        if self.fix_len is not None:
-            init_w_fix = torch.randn(fix_len - 1, net_dim)
-            self.fix_emb = torch.nn.Parameter(init_w_fix)
+        self.with_type = with_type
+        if self.with_type:
+            assert ntypes is not None, "require type numbers"
+            self.type_embs = torch.nn.Embedding(ntypes, net_dim)
 
     def encode(
         self, molecules, molecule_mask, reaction_mask, required_mask,
@@ -64,11 +64,16 @@ class MyModel(nn.Module):
         net_x, _ = self.gnn2(x_feat, edge_feats, edge_index)
         return net_x[required_mask]
 
-    def decode(self, memory, labels, attn_mask, key_padding_mask=None):
-        seq_input = [memory.unsqueeze(dim=1), self.word_emb(labels)]
-        seq_input = torch.cat(seq_input, dim=1)
+    def decode(
+        self, memory, labels, attn_mask, key_padding_mask=None, seq_types=None
+    ):
+        x_input = self.word_emb(labels)
+        if self.with_type:
+            assert seq_types is not None, "Require type inputs"
+            x_input += self.type_embs(seq_types)
+        seq_input = torch.cat([memory.unsqueeze(dim=1), x_input], dim=1)
         seq_output = self.decoder(
-            src=seq_input, mask=attn_mask,
+            src=self.pos_enc(seq_input), mask=attn_mask,
             key_padding_mask=key_padding_mask
         )
 
