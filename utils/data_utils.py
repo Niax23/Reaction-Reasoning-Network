@@ -3,18 +3,7 @@ import json
 import os
 from tqdm import tqdm
 from .chemistry_utils import canonical_smiles
-
-def edit(smiles_sequence):
-    # 将SMILES序列分成三个部分：反应物、中间体、产物
-    reactants, _, products = smiles_sequence.partition('>')
-
-    # 再次分割，以去掉反应物之后的所有内容，仅保留反应物和产物
-    _, _, products = products.partition('>')
-
-    # 将反应物和产物重新组合，并去掉中间体
-    edited_sequence = f"{reactants}>>{products}"
-
-    return edited_sequence
+import json
 
 
 def clk_x(x):
@@ -22,17 +11,16 @@ def clk_x(x):
 
 
 def parse_uspto_condition_data(data_path, verbose=True):
-    raw_info = pandas.read_csv(data_path)
-    raw_info = raw_info.fillna('')
+    with open(data_path) as Fin:
+        raw_info = json.load(data_path)
     all_x = set()
-    raw_info = raw_info.to_dict('records')
     iterx = tqdm(raw_info) if verbose else raw_info
     for i, element in enumerate(iterx):
-        cat = clk_x(element['catalyst1'])
-        sov1 = clk_x(element['solvent1'])
-        sov2 = clk_x(element['solvent2'])
-        reg1 = clk_x(element['reagent1'])
-        reg2 = clk_x(element['reagent2'])
+        cat = clk_x(element['new']['catalyst'])
+        sov1 = clk_x(element['new']['solvent1'])
+        sov2 = clk_x(element['new']['solvent2'])
+        reg1 = clk_x(element['new']['reagent1'])
+        reg2 = clk_x(element['new']['reagent2'])
         all_x.add(cat)
         all_x.add(sov1)
         all_x.add(sov2)
@@ -48,17 +36,19 @@ def parse_uspto_condition_data(data_path, verbose=True):
     for i, element in enumerate(iterx):
         rxn_type = element['dataset']
         labels = [
-            name2idx[clk_x(element['catalyst1'])],
-            name2idx[clk_x(element['solvent1'])],
-            name2idx[clk_x(element['solvent2'])],
-            name2idx[clk_x(element['reagent1'])],
-            name2idx[clk_x(element['reagent2'])]
+            name2idx[clk_x(element['new']['catalyst1'])],
+            name2idx[clk_x(element['new']['solvent1'])],
+            name2idx[clk_x(element['new']['solvent2'])],
+            name2idx[clk_x(element['new']['reagent1'])],
+            name2idx[clk_x(element['new']['reagent2'])]
         ]
 
         this_line = {
-            'canonical_rxn': element['canonical_rxn'],
+            'canonical_rxn': element['new']['canonical_rxn'],
             'label': labels,
-            'mapped_rxn': element['mapped_rxn'],
+            'mapped_rxn': element['new']['mapped_rxn'],
+            'reactants': element['new']['reac_list'],
+            'products': element['new']['prod_list']
         }
         all_data[f'{rxn_type}_data'].append(this_line)
 

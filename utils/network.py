@@ -26,11 +26,11 @@ class ChemicalReactionNetwork:
             return
 
         self.reaction_adj_list[canonical_rxn] = {
-            "reactants": reaction_info['reac_list'],
-            "products": reaction_info['prod_list']
+            "reactants": reaction_info['reactants'],
+            "products": reaction_info['products']
         }
 
-        for reactant in reaction_info['reac_list']:
+        for reactant in reaction_info['reactants']:
             if reactant not in self.substance_adj_list:
                 self.substance_adj_list[reactant] = []
 
@@ -39,7 +39,7 @@ class ChemicalReactionNetwork:
                 "role": "reactant"
             })
 
-        for product in reaction_info['prod_list']:
+        for product in reaction_info['products']:
             if product not in self.substance_adj_list:
                 self.substance_adj_list[product] = []
             self.substance_adj_list[product].append({

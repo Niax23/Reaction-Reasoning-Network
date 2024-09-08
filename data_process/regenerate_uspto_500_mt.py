@@ -1,3 +1,4 @@
+import os
 from rdkit import Chem
 import pandas
 import json
