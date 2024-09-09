@@ -108,22 +108,6 @@ def fix_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 
-
-def generate_square_subsequent_mask(sz, device='cpu'):
-    mask = (torch.triu(torch.ones((sz, sz))) == 1).transpose(0, 1)
-    # mask = mask.float().masked_fill(mask == 0, float('-inf'))
-    # mask = mask.masked_fill(mask == 1, float(0.0)).to(device)
-    mask = (mask == 0).to(device)
-    return mask
-
-
-def generate_tgt_mask(tgt, tokenizer, pad='<PAD>', device='cpu'):
-    PAD_IDX, siz = tokenizer.token2idx[pad], tgt.shape[1]
-    tgt_pad_mask = (tgt == PAD_IDX).to(device)
-    tgt_sub_mask = generate_square_subsequent_mask(siz, device)
-    return tgt_pad_mask, tgt_sub_mask
-
-
 def correct_trans_output(trans_pred, end_idx, pad_idx):
     batch_size, max_len = trans_pred.shape
     device = trans_pred.device
@@ -143,6 +127,19 @@ def data_eval_trans(trans_pred, trans_lb, return_tensor=False):
     line_acc = torch.sum(trans_pred == trans_lb, dim=-1) == max_len
     line_acc = line_acc.cpu()
     return line_acc if return_tensor else (line_acc.sum().item(), batch_size)
+
+
+def generate_square_subsequent_mask(sz, device='cpu'):
+    mask = (torch.triu(torch.ones((sz, sz))) == 1).transpose(0, 1)
+    mask = (mask == 0).to(device)
+    return mask
+
+
+def generate_tgt_mask(tgt, pad_idx, device='cpu'):
+    siz = tgt.shape[1]
+    tgt_pad_mask = (tgt == pad_idx).to(device)
+    tgt_sub_mask = generate_square_subsequent_mask(siz, device)
+    return tgt_pad_mask, tgt_sub_mask
 
 
 def check_early_stop(*args):
