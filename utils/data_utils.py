@@ -4,6 +4,9 @@ import os
 from tqdm import tqdm
 from .chemistry_utils import canonical_smiles
 import json
+import torch
+import numpy as np
+import random
 
 
 def clk_x(x):
@@ -96,3 +99,66 @@ def parse_dataset_by_smiles_500(json_files):
         json.dump(data_by_id, file, indent=4)
 
     return data_by_id
+
+
+def fix_seed(seed):
+    random.seed(seed)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+
+def generate_square_subsequent_mask(sz, device='cpu'):
+    mask = (torch.triu(torch.ones((sz, sz))) == 1).transpose(0, 1)
+    # mask = mask.float().masked_fill(mask == 0, float('-inf'))
+    # mask = mask.masked_fill(mask == 1, float(0.0)).to(device)
+    mask = (mask == 0).to(device)
+    return mask
+
+
+def generate_tgt_mask(tgt, tokenizer, pad='<PAD>', device='cpu'):
+    PAD_IDX, siz = tokenizer.token2idx[pad], tgt.shape[1]
+    tgt_pad_mask = (tgt == PAD_IDX).to(device)
+    tgt_sub_mask = generate_square_subsequent_mask(siz, device)
+    return tgt_pad_mask, tgt_sub_mask
+
+
+def correct_trans_output(trans_pred, end_idx, pad_idx):
+    batch_size, max_len = trans_pred.shape
+    device = trans_pred.device
+    x_range = torch.arange(0, max_len, 1).unsqueeze(0)
+    x_range = x_range.repeat(batch_size, 1).to(device)
+
+    y_cand = (torch.ones_like(trans_pred).long() * max_len + 12).to(device)
+    y_cand[trans_pred == end_idx] = x_range[trans_pred == end_idx]
+    min_result = torch.min(y_cand, dim=-1, keepdim=True)
+    end_pos = min_result.values
+    trans_pred[x_range > end_pos] = pad_idx
+    return trans_pred
+
+
+def data_eval_trans(trans_pred, trans_lb, return_tensor=False):
+    batch_size, max_len = trans_pred.shape
+    line_acc = torch.sum(trans_pred == trans_lb, dim=-1) == max_len
+    line_acc = line_acc.cpu()
+    return line_acc if return_tensor else (line_acc.sum().item(), batch_size)
+
+
+def check_early_stop(*args):
+    answer = True
+    for x in args:
+        answer &= all(t <= x[0] for t in x[1:])
+    return answer
+
+
+def convert_log_into_label(logits, mod='sigmoid'):
+    if mod == 'sigmoid':
+        pred = torch.zeros_like(logits)
+        pred[logits >= 0] = 1
+        pred[logits < 0] = 0
+    elif mod == 'softmax':
+        pred = torch.argmax(logits, dim=-1)
+    else:
+        raise NotImplementedError(f'Invalid mode {mod}')
+    return pred
