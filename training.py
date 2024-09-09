@@ -71,7 +71,7 @@ def train_uspto_condition(loader, model, optimizer, device, warmup=False):
     return np.mean(los_cur)
 
 
-def eval_pred(loader, model, device):
+def eval_uspto_condition(loader, model, device):
     model, accs, gt = model.eval(), [], []
     for reac, prod, label in tqdm(loader):
         mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, \

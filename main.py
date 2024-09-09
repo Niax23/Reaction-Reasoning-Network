@@ -5,3 +5,4 @@ from utils.data_utils import (
 )
 
 from model import GATBase, MyModel, RxnNetworkGNN
+from training import train_uspto_condition, eval_uspto_condition
