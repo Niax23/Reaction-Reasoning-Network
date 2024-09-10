@@ -3,6 +3,8 @@ from utils.graph_utils import smiles2graph
 import numpy as np
 import torch_geometric
 from numpy import concatenate as npcat
+
+
 class ConditionDataset(torch.utils.data.Dataset):
     def __init__(self, reactions, labels):
         super(ConditionDataset, self).__init__()
@@ -18,8 +20,8 @@ class ConditionDataset(torch.utils.data.Dataset):
 
 def graph_col_fn(batch):
     batch_size, edge_idx, node_feat, edge_feat = len(batch), [], [], []
-    node_ptr,  node_batch, lstnode, isprod = [0], [], 0, []
-    max_node, is_rc = max(x['num_nodes'] for x in batch), []
+    node_ptr, node_batch, lstnode = [0], [], 0
+    max_node = max(x['num_nodes'] for x in batch)
     batch_mask = torch.zeros(batch_size, max_node).bool()
 
     for idx, gp in enumerate(batch):
@@ -27,10 +29,6 @@ def graph_col_fn(batch):
         node_feat.append(gp['node_feat'])
         edge_feat.append(gp['edge_feat'])
         edge_idx.append(gp['edge_index'] + lstnode)
-        is_rc.append(torch.Tensor(gp['is_rc']).bool())
-        if 'isprod' in gp:
-            isprod.append(gp['isprod'])
-
         batch_mask[idx, :node_cnt] = True
 
         lstnode += node_cnt
@@ -44,13 +42,8 @@ def graph_col_fn(batch):
         'batch': torch.from_numpy(npcat(node_batch, axis=0)),
         'edge_index': torch.from_numpy(npcat(edge_idx, axis=-1)),
         'num_nodes': lstnode,
-        'batch_mask': batch_mask,
-        'is_rc': torch.cat(is_rc, dim=0)
+        'batch_mask': batch_mask
     }
-
-    if len(isprod) > 0:
-        result['is_prod'] = torch.from_numpy(npcat(isprod, axis=0))
-
     return torch_geometric.data.Data(**result)
 
 
