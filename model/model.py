@@ -1,4 +1,6 @@
 import torch
+import torch.nn as nn
+import math
 
 
 def graph2batch(
@@ -27,7 +29,7 @@ class MyModel(nn.Module):
         })
         self.pooler = torch.nn.MultiheadAttention(
             embed_dim=net_dim, kdim=molecule_dim, vdim=molecule_dim,
-            num_heads=pool_heads, batch_first=True, dropout=dropout
+            num_heads=heads, batch_first=True, dropout=dropout
         )
         t_layer = torch.nn.TransformerEncoderLayer(
             net_dim, heads, dim_feedforward=net_dim << 1,

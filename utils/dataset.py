@@ -1,7 +1,8 @@
 import torch
 from utils.graph_utils import smiles2graph
-
-
+import numpy as np
+import torch_geometric
+from numpy import concatenate as npcat
 class ConditionDataset(torch.utils.data.Dataset):
     def __init__(self, reactions, labels):
         super(ConditionDataset, self).__init__()

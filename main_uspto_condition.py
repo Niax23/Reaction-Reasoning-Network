@@ -12,6 +12,9 @@ from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding
 from training import train_uspto_condition, eval_uspto_condition
 import argparse
 import os
+import time
+import pickle
+import json
 
 
 def make_dir(args):
@@ -74,7 +77,7 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--early_stop', type=int, default=0,
-        'the number of epochs for checking early stop, 0 for invalid'
+        help='the number of epochs for checking early stop, 0 for invalid'
     )
 
     parser.add_argument(
@@ -86,7 +89,7 @@ if __name__ == '__main__':
         help='the path for contraining log'
     )
     parser.add_argument(
-        '--num_worker', type=int, default=8,
+        '--num_workers', type=int, default=8,
         help='the number of worker for dataloader'
     )
 
@@ -102,6 +105,12 @@ if __name__ == '__main__':
         '--seed', type=int, default=2023,
         help='the random seed for training'
     )
+
+    parser.add_argument(
+    '--device', type=int, default=-1,
+    help='CUDA device to use; -1 for CPU'
+)
+
 
     # data config
 
@@ -125,27 +134,27 @@ if __name__ == '__main__':
 
     log_dir, model_dir, token_dir = make_dir(args)
 
-    all_data, label_mapper = parse_uspto_condition_data(args.path)
+    all_data, label_mapper = parse_uspto_condition_data(args.data_path)
     all_net = ChemicalReactionNetwork(
         all_data['train_data'] + all_data['val_data'] + all_data['test_data']
     )
 
-    train_net = all_net if args.transudctive else\
+    train_net = all_net if args.transductive else\
         ChemicalReactionNetwork(all_data['train_data'])
 
     train_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['train_data']],
-        labels=[x['labels'] for x in all_data['train_data']]
+        labels=[x['label'] for x in all_data['train_data']]
     )
 
     val_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['val_data']],
-        labels=[x['labels'] for x in all_data['val_data']]
+        labels=[x['label'] for x in all_data['val_data']]
     )
 
     test_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['test_data']],
-        labels=[x['labels'] for x in all_data['test_data']]
+        labels=[x['label'] for x in all_data['test_data']]
     )
 
     train_loader = DataLoader(
@@ -170,7 +179,7 @@ if __name__ == '__main__':
     )
 
     mol_gnn = GATBase(
-        num_layers=args.mol_layer, num_heads=args.heads, dropout=args.dropout,
+        num_layers=args.mole_layer, num_heads=args.heads, dropout=args.dropout,
         embedding_dim=args.dim, negative_slope=args.negative_slope
     )
 

@@ -4,7 +4,7 @@ import numpy as np
 from torch.nn.functional import cross_entropy
 
 from utils.data_utils import (
-    generate_tgt_mask, correct_trans_output, generate_square_subsequent_mask
+    generate_tgt_mask, correct_trans_output, generate_square_subsequent_mask,
     convert_log_into_label, data_eval_trans
 )
 
