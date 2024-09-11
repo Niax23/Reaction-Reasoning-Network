@@ -62,6 +62,7 @@ def reaction_graph_colfn(reactions, G, hop):
 
 def uspto_condition_colfn(batch, G, hop):
     x_infos = reaction_graph_colfn([x[0] for x in batch], G, hop)
-    label_types = torch.LongTensor([[0, 1, 1, 2]] * x_infos[-1].shape[0])
     labels = torch.LongTensor([x[1] for x in batch])
+    label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
+    
     return x_infos + (labels, label_types)

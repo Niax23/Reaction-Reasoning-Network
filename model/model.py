@@ -60,7 +60,7 @@ class MyModel(nn.Module):
 
         x_feat_shape = (molecule_mask.shape[0], self.net_dim)
         x_feat = torch.zeros(x_feat_shape).to(molecule_feats)
-        x_feat[molecule_mask] = molecule_feats
+        x_feat[molecule_mask] = molecule_feats.squeeze(1)
         x_feat[reaction_mask] = self.reaction_init
         edge_feats = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
         net_x, _ = self.gnn2(x_feat, edge_feats, edge_index)
@@ -76,7 +76,7 @@ class MyModel(nn.Module):
         seq_input = torch.cat([memory.unsqueeze(dim=1), x_input], dim=1)
         seq_output = self.decoder(
             src=self.pos_enc(seq_input), mask=attn_mask,
-            key_padding_mask=key_padding_mask
+            src_key_padding_mask=key_padding_mask
         )
 
         return seq_output

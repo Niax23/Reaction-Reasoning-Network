@@ -51,16 +51,17 @@ def train_uspto_condition(loader, model, optimizer, device, warmup=False):
         labels = labels.to(device)
         label_types = label_types.to(device)
 
+
         sub_mask = generate_square_subsequent_mask(5, device)
 
         res = model(
             molecules=mol_graphs, molecule_mask=mol_mask,
             reaction_mask=reaction_mask, required_mask=req_mask,
-            edge_index=edge_index, edge_types=edge_types, labels=labels[:, 1:],
+            edge_index=edge_index, edge_types=edge_types, labels=labels[:, :-1],
             attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
         )
 
-        loss = calc_trans_loss(res, tgt_out, -1000)
+        loss = calc_trans_loss(res, labels, -1000)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -73,7 +74,7 @@ def train_uspto_condition(loader, model, optimizer, device, warmup=False):
 
 def eval_uspto_condition(loader, model, device):
     model, accs, gt = model.eval(), [], []
-    for reac, prod, label in tqdm(loader):
+    for data in tqdm(loader):
         mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, \
             req_mask, labels, label_types = data
 
@@ -87,18 +88,19 @@ def eval_uspto_condition(loader, model, device):
 
         sub_mask = generate_square_subsequent_mask(5, device)
 
+
         with torch.no_grad():
             res = model(
                 molecules=mol_graphs, molecule_mask=mol_mask,
                 reaction_mask=reaction_mask, required_mask=req_mask,
                 edge_index=edge_index, edge_types=edge_types,
-                labels=labels[:, 1:], attn_mask=sub_mask,
+                labels=labels[:, :-1], attn_mask=sub_mask,
                 key_padding_mask=None, seq_types=label_types
             )
             result = convert_log_into_label(res, mod='softmax')
 
         accs.append(result)
-        gt.append(tgt_out)
+        gt.append(labels)
 
     accs = torch.cat(accs, dim=0)
     gt = torch.cat(gt, dim=0)
