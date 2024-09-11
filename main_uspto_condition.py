@@ -107,10 +107,9 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-    '--device', type=int, default=-1,
-    help='CUDA device to use; -1 for CPU'
-)
-
+        '--device', type=int, default=-1,
+        help='CUDA device to use; -1 for CPU'
+    )
 
     # data config
 
@@ -163,7 +162,7 @@ if __name__ == '__main__':
             x, train_net, args.reaction_hop
         )
     )
-    
+
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
