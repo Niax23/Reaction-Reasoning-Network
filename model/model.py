@@ -35,6 +35,12 @@ class MyModel(nn.Module):
             net_dim, heads, dim_feedforward=net_dim << 1,
             batch_first=True, dropout=dropout
         )
+        self.out_layer = torch.nn.Sequential(
+            torch.nn.Linear(net_dim, net_dim),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(dropout),
+            torch.nn.Linear(net_dim, n_words)
+        )
         self.decoder = torch.nn.TransformerEncoder(t_layer, dec_layers)
         self.reaction_init = torch.nn.Parameter(torch.randn(net_dim))
         self.molecule_dim = molecule_dim
@@ -79,7 +85,7 @@ class MyModel(nn.Module):
             src_key_padding_mask=key_padding_mask
         )
 
-        return seq_output
+        return self.out_layer(seq_output)
 
     def forward(
         self, molecules, molecule_mask, reaction_mask, required_mask, edge_index,

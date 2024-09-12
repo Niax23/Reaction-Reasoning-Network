@@ -165,21 +165,21 @@ if __name__ == '__main__':
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=True, collate_fn=lambda x: uspto_condition_colfn(
-            x, train_net, args.reaction_hop,args.max_neighbors
+            x, train_net, args.reaction_hop, args.max_neighbors
         )
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, all_net, args.reaction_hop,args.max_neighbors
+            x, all_net, args.reaction_hop, args.max_neighbors
         )
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, all_net, args.reaction_hop,args.max_neighbors
+            x, all_net, args.reaction_hop, args.max_neighbors
         )
     )
 

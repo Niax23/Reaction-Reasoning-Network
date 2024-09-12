@@ -2,6 +2,7 @@ from collections import deque
 import torch
 import random
 
+
 class ChemicalReactionNetwork:
     def __init__(self, data):
         """
@@ -112,11 +113,9 @@ class ChemicalReactionNetwork:
                         Q.append(('molecule', son, depth + 1))
             else:
                 neighbors = self.get_substance_neighbors(smiles)
-                if max_neighbors is not None and len(neighbors) > max_neighbors:
-                    unvisited_neighbors = [son for son in neighbors if ('reaction', son) not in visited]
-                    if max_neighbors > len(unvisited_neighbors):
-                        max_neighbors = len(unvisited_neighbors)
-                    neighbors = random.sample(unvisited_neighbors, max_neighbors)
+                if max_neighbors is not None and \
+                        len(neighbors) > max_neighbors:
+                    neighbors = random.sample(neighbors, max_neighbors)
                 for son in neighbors:
                     # neighbor > max do sample
                     if ('reaction', son) not in visited:
