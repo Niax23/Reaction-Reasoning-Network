@@ -47,7 +47,7 @@ def graph_col_fn(batch):
     return torch_geometric.data.Data(**result)
 
 
-def reaction_graph_colfn(reactions, G, hop):
+def reaction_graph_colfn(reactions, G, hop, max_neighbors=None):
     mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
         req_mask = G.sample_multiple_subgraph(reactions, hop)
 

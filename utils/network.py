@@ -89,7 +89,7 @@ class ChemicalReactionNetwork:
             for x in role
         ], [])
 
-    def sample_multiple_subgraph(self, reactions, hop):
+    def sample_multiple_subgraph(self, reactions, hop, max_neighbors=None):
         assert all(x in self.reaction_adj_list for x in reactions),\
             "Something that is not an reaction is passed as start vertex"
 
@@ -112,6 +112,7 @@ class ChemicalReactionNetwork:
                         Q.append(('molecule', son, depth + 1))
             else:
                 for son in self.get_substance_neighbors(smiles):
+                    # neighbor > max do sample
                     if ('reaction', son) not in visited:
                         visited.add(('reaction', son))
                         Q.append(('reaction', son, depth + 1))
