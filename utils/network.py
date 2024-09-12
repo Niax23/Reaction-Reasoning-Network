@@ -91,6 +91,7 @@ class ChemicalReactionNetwork:
         ], [])
 
     def sample_multiple_subgraph(self, reactions, hop, max_neighbors=None):
+        assert type(reactions) is list, "Order are import for return results"
         assert all(x in self.reaction_adj_list for x in reactions),\
             "Something that is not an reaction is passed as start vertex"
 
@@ -151,16 +152,14 @@ class ChemicalReactionNetwork:
 
         molecule_mask = [0] * len(item2id)
         reaction_mask = [0] * len(item2id)
-        required_mask = [0] * len(item2id)
         for k, v in item2id.items():
             molecule_mask[v[1]] = v[0] == 'molecule'
             reaction_mask[v[1]] = v[0] != 'molecule'
 
-        for x in reactions:
-            required_mask[item2id[x][1]] = True
+        required_ids = [item2id[x][1] for x in reactions]
 
         return molecules, edge_index, edge_types, \
-            molecule_mask, reaction_mask, required_mask
+            molecule_mask, reaction_mask, required_ids
 
     def __str__(self):
         return f"ChemicalReactionNetwork with {len(self.substance_adj_list)}"\

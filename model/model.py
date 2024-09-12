@@ -52,7 +52,7 @@ class MyModel(nn.Module):
             self.type_embs = torch.nn.Embedding(ntypes, net_dim)
 
     def encode(
-        self, molecules, molecule_mask, reaction_mask, required_mask,
+        self, molecules, molecule_mask, reaction_mask, required_ids,
         edge_index, edge_types,
     ):
         x, _ = self.gnn1(molecules)
@@ -70,7 +70,7 @@ class MyModel(nn.Module):
         x_feat[reaction_mask] = self.reaction_init
         edge_feats = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
         net_x, _ = self.gnn2(x_feat, edge_feats, edge_index)
-        return net_x[required_mask]
+        return net_x[required_ids]
 
     def decode(
         self, memory, labels, attn_mask, key_padding_mask=None, seq_types=None
@@ -88,12 +88,13 @@ class MyModel(nn.Module):
         return self.out_layer(seq_output)
 
     def forward(
-        self, molecules, molecule_mask, reaction_mask, required_mask, edge_index,
-        edge_types, labels, attn_mask, key_padding_mask=None, seq_types=None
+        self, molecules, molecule_mask, reaction_mask, required_ids,
+        edge_index, edge_types, labels, attn_mask,
+        key_padding_mask=None, seq_types=None
     ):
         reaction_embs = self.encode(
             molecules, molecule_mask, reaction_mask,
-            required_mask, edge_index, edge_types
+            required_ids, edge_index, edge_types
         )
 
         result = self.decode(

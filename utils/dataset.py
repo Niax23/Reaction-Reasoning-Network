@@ -49,15 +49,14 @@ def graph_col_fn(batch):
 
 def reaction_graph_colfn(reactions, G, hop, max_neighbors=None):
     mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-        req_mask = G.sample_multiple_subgraph(reactions, hop, max_neighbors)
+        req_ids = G.sample_multiple_subgraph(reactions, hop, max_neighbors)
 
     mol_graphs = graph_col_fn([smiles2graph(x) for x in mol_strs])
     edge_index = torch.LongTensor(edge_index).T
     mol_mask = torch.BoolTensor(mol_mask)
     reaction_mask = torch.BoolTensor(reaction_mask)
-    req_mask = torch.BoolTensor(req_mask)
 
-    return mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, req_mask
+    return mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, req_ids
 
 
 def uspto_condition_colfn(batch, G, hop, max_neighbors=None):

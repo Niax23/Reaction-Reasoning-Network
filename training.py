@@ -41,23 +41,21 @@ def train_uspto_condition(loader, model, optimizer, device, warmup=False):
 
     for data in tqdm(loader):
         mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, \
-            req_mask, labels, label_types = data
+            req_ids, labels, label_types = data
 
         mol_graphs = mol_graphs.to(device)
         edge_index = edge_index.to(device)
         mol_mask = mol_mask.to(device)
         reaction_mask = reaction_mask.to(device)
-        req_mask = req_mask.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
-
 
         sub_mask = generate_square_subsequent_mask(5, device)
 
         res = model(
-            molecules=mol_graphs, molecule_mask=mol_mask,
-            reaction_mask=reaction_mask, required_mask=req_mask,
-            edge_index=edge_index, edge_types=edge_types, labels=labels[:, :-1],
+            molecules=mol_graphs, molecule_mask=mol_mask, required_ids=req_ids,
+            reaction_mask=reaction_mask,  edge_index=edge_index,
+            edge_types=edge_types, labels=labels[:, :-1],
             attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
         )
 
@@ -76,23 +74,21 @@ def eval_uspto_condition(loader, model, device):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
         mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, \
-            req_mask, labels, label_types = data
+            req_ids, labels, label_types = data
 
         mol_graphs = mol_graphs.to(device)
         edge_index = edge_index.to(device)
         mol_mask = mol_mask.to(device)
         reaction_mask = reaction_mask.to(device)
-        req_mask = req_mask.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
 
         sub_mask = generate_square_subsequent_mask(5, device)
 
-
         with torch.no_grad():
             res = model(
                 molecules=mol_graphs, molecule_mask=mol_mask,
-                reaction_mask=reaction_mask, required_mask=req_mask,
+                reaction_mask=reaction_mask, required_ids=req_ids,
                 edge_index=edge_index, edge_types=edge_types,
                 labels=labels[:, :-1], attn_mask=sub_mask,
                 key_padding_mask=None, seq_types=label_types
