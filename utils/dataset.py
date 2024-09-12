@@ -49,7 +49,7 @@ def graph_col_fn(batch):
 
 def reaction_graph_colfn(reactions, G, hop, max_neighbors=None):
     mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-        req_mask = G.sample_multiple_subgraph(reactions, hop)
+        req_mask = G.sample_multiple_subgraph(reactions, hop,max_neighbors)
 
     mol_graphs = graph_col_fn([smiles2graph(x) for x in mol_strs])
     edge_index = torch.LongTensor(edge_index).T
@@ -60,8 +60,8 @@ def reaction_graph_colfn(reactions, G, hop, max_neighbors=None):
     return mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, req_mask
 
 
-def uspto_condition_colfn(batch, G, hop):
-    x_infos = reaction_graph_colfn([x[0] for x in batch], G, hop)
+def uspto_condition_colfn(batch, G, hop,max_neighbors = None):
+    x_infos = reaction_graph_colfn([x[0] for x in batch], G, hop,max_neighbors)
     labels = torch.LongTensor([x[1] for x in batch])
     label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
     

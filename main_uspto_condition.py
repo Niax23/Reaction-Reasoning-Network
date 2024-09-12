@@ -122,7 +122,13 @@ if __name__ == '__main__':
         help='the path containing the data'
     )
 
+    parser.add_argument(
+        '--max_neighbors', type=int, default=20,
+        help='max neighbors when sampling'
+    )
+
     args = parser.parse_args()
+    print(args)
 
     fix_seed(args.seed)
 
@@ -159,21 +165,21 @@ if __name__ == '__main__':
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=True, collate_fn=lambda x: uspto_condition_colfn(
-            x, train_net, args.reaction_hop
+            x, train_net, args.reaction_hop,args.max_neighbors
         )
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, all_net, args.reaction_hop
+            x, all_net, args.reaction_hop,args.max_neighbors
         )
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, all_net, args.reaction_hop
+            x, all_net, args.reaction_hop,args.max_neighbors
         )
     )
 
