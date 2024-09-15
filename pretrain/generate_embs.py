@@ -1,4 +1,4 @@
-from pretrain_gnn import MyGNN_graphpred
+from pretrain_gnn import GNN_graph
 import json
 from tqdm import tqdm
 from pretrain_gnn_utils import smiles2graph
@@ -15,7 +15,7 @@ with open('smiles.jsonl', 'r') as f:
 
 
 emb_dict = {}
-model = MyGNN_graphpred(num_layer=5,emb_dim=300).to(device)
+model = GNN_graph(num_layer=5, emb_dim=300).to(device)
 model.from_pretrained("supervised_contextpred.pth")
 model.eval()
 
@@ -23,16 +23,16 @@ model.eval()
 with torch.no_grad():
     for smiles in tqdm(smiles_list):
         graph = smiles2graph(smiles)
-        print(graph['edge_index'].shape)
-        print(graph['edge_index'])
-        
         data = Data(
             x=torch.from_numpy(graph['node_feat']).to(device),          # 节点特征
-            edge_index=torch.from_numpy(graph['edge_index']).to(device), # 边的连接
-            edge_attr=torch.from_numpy(graph['edge_feat']).to(device)   # 边的特征
+            edge_index=torch.from_numpy(
+                graph['edge_index']).to(device),  # 边的连接
+            edge_attr=torch.from_numpy(graph['edge_feat']).to(device),   # 边的特征
+            batch=torch.LongTensor(
+                [0] * graph['node_feat'].shape[0]).to(device)
         )
-        
-        emb_dict[smiles] = model(data)
+        with torch.no_grad():
+            emb_dict[smiles] = model(data)
 
 with open('embeddings_dict.pkl', 'wb') as f:
     pickle.dump(emb_dict, f)
