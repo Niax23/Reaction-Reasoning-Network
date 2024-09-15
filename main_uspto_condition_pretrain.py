@@ -8,8 +8,8 @@ from utils.network import ChemicalReactionNetwork
 from utils.dataset import ConditionDataset, uspto_condition_colfn_pretrain
 
 
-from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding,PretrainedModel
-from training import train_uspto_condition, eval_uspto_condition
+from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding, PretrainedModel
+from training import train_uspto_condition_pretrain, eval_uspto_condition_pretrain
 import argparse
 import os
 import time
@@ -36,7 +36,7 @@ if __name__ == '__main__':
         help='the num layer of molecule gnn'
     )
     parser.add_argument(
-        '--dim', type=int, default=256,
+        '--dim', type=int, default=300,
         help='the num of dim for the model'
     )
     parser.add_argument(
@@ -44,7 +44,7 @@ if __name__ == '__main__':
         help='the dropout for model'
     )
     parser.add_argument(
-        '--reaction_hop', type=int, default=2,
+        '--reaction_hop', type=int, default=1,
         help='the number of hop for sampling graphs'
     )
     parser.add_argument(
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         help='the step to start lr decay'
     )
     parser.add_argument(
-        '--base_log', type=str, default='log',
+        '--base_log', type=str, default='log_pretrain',
         help='the path for contraining log'
     )
     parser.add_argument(
@@ -123,7 +123,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-        '--max_neighbors', type=int, default=15,
+        '--max_neighbors', type=int, default=20,
         help='max neighbors when sampling'
     )
 
@@ -183,7 +183,6 @@ if __name__ == '__main__':
         )
     )
 
-
     net_gnn = RxnNetworkGNN(
         num_layers=args.reaction_hop * 2 + 1, num_heads=args.heads,
         dropout=args.dropout, embedding_dim=args.dim,
@@ -191,6 +190,9 @@ if __name__ == '__main__':
     )
 
     pos_env = PositionalEncoding(args.dim, args.dropout, maxlen=128)
+
+    with open('./pretrain/embeddings_dict.pkl', 'rb') as f:
+        emb_dict = pickle.load(f)
 
     model = PretrainedModel(
         gnn2=net_gnn, PE=pos_env,
@@ -217,12 +219,14 @@ if __name__ == '__main__':
 
     for ep in range(args.epoch):
         print(f'[INFO] training epoch {ep}')
-        loss = train_uspto_condition(
+        loss = train_uspto_condition_pretrain(
             loader=train_loader, model=model, optimizer=optimizer,
-            device=device, warmup=(ep < args.warmup)
+            emb_dict=emb_dict, device=device, warmup=(ep < args.warmup)
         )
-        val_results = eval_uspto_condition(val_loader, model, device)
-        test_results = eval_uspto_condition(test_loader, model, device)
+        val_results = eval_uspto_condition_pretrain(
+            val_loader, model, emb_dict, device)
+        test_results = eval_uspto_condition_pretrain(
+            test_loader, model, emb_dict, device)
 
         print('[Train]:', loss)
         print('[Valid]:', val_results)

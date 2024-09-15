@@ -102,16 +102,16 @@ class MyModel(nn.Module):
             key_padding_mask=key_padding_mask, seq_types=seq_types
         )
         return result
-    
+
 
 class PretrainedModel(nn.Module):
     def __init__(
         self, gnn2, PE, net_dim, heads, dropout,
         dec_layers, n_words, with_type=False, ntypes=None
     ):
-        super(MyModel, self).__init__()
+        super(PretrainedModel, self).__init__()
         self.pos_enc = PE
-        self.gnn2 = gnn2  
+        self.gnn2 = gnn2
         self.edge_emb = torch.nn.ParameterDict({
             'reactant': torch.nn.Parameter(torch.randn(net_dim)),
             'product': torch.nn.Parameter(torch.randn(net_dim))
@@ -137,13 +137,12 @@ class PretrainedModel(nn.Module):
 
     def encode(
         self, molecules, molecule_mask, reaction_mask, required_ids,
-        edge_index, edge_types, emb_dict
+        edge_index, edge_types
     ):
-        molecule_feats = torch.stack([emb_dict[mole] for mole in molecules])
 
         x_feat_shape = (molecule_mask.shape[0], self.net_dim)
-        x_feat = torch.zeros(x_feat_shape).to(molecule_feats)
-        x_feat[molecule_mask] = molecule_feats.squeeze(1)
+        x_feat = torch.zeros(x_feat_shape).to(molecules)
+        x_feat[molecule_mask] = molecules.squeeze(1)
         x_feat[reaction_mask] = self.reaction_init
         edge_feats = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
         net_x, _ = self.gnn2(x_feat, edge_feats, edge_index)
@@ -166,12 +165,12 @@ class PretrainedModel(nn.Module):
 
     def forward(
         self, molecules, molecule_mask, reaction_mask, required_ids,
-        edge_index, edge_types, labels, attn_mask,emb_dict,
+        edge_index, edge_types, labels, attn_mask,
         key_padding_mask=None, seq_types=None,
     ):
         reaction_embs = self.encode(
             molecules, molecule_mask, reaction_mask,
-            required_ids, edge_index, edge_types,emb_dict
+            required_ids, edge_index, edge_types
         )
 
         result = self.decode(
