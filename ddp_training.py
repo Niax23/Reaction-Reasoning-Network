@@ -136,20 +136,31 @@ def ddp_train_uspto_condition(
     return manager
 
 
-def ddp_eval_uspto_condition(loader, model, device):
-    model, accs, gt = model.eval(), [], []
+def ddp_eval_uspto_condition(loader, model, device, verbose=False):
+    model = model.eval()
+    cat_acc = MetricCollector('catalyst', type_fmt=':.2f')
+    sov1_acc = MetricCollector('solvent1', type_fmt=":.2f")
+    sov2_acc = MetricCollector('solvent2', type_fmt=':.2f')
+    reg1_acc = MetricCollector('reagent1', type_fmt=':.2f')
+    reg2_acc = MetricCollector('reagent2', type_fmt=':.2f')
+    ov = MetricCollector('overall', type_fmt=':.2f')
+    man = MetricManager([cat_acc, sov1_acc, sov2_acc, reg1_acc, reg2_acc, ov])
+    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
+
+    iterx = tqdm(loader) if verbose else loader
     for data in tqdm(loader):
         mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, \
             req_ids, labels, label_types = data
 
-        mol_graphs = mol_graphs.to(device)
-        edge_index = edge_index.to(device)
-        mol_mask = mol_mask.to(device)
-        reaction_mask = reaction_mask.to(device)
-        labels = labels.to(device)
-        label_types = label_types.to(device)
+        mol_graphs = mol_graphs.to(device, non_blocking=True)
+        edge_index = edge_index.to(device, non_blocking=True)
+        mol_mask = mol_mask.to(device, non_blocking=True)
+        reaction_mask = reaction_mask.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
+        label_types = label_types.to(device, non_blocking=True)
 
-        sub_mask = generate_square_subsequent_mask(5, device)
+        sub_mask = generate_square_subsequent_mask(5, 'cpu')
+        sub_mask = sub_mask.to(device, non_blocking=True)
 
         with torch.no_grad():
             res = model(
@@ -161,21 +172,14 @@ def ddp_eval_uspto_condition(loader, model, device):
             )
             result = convert_log_into_label(res, mod='softmax')
 
-        accs.append(result)
-        gt.append(labels)
-
-    accs = torch.cat(accs, dim=0)
-    gt = torch.cat(gt, dim=0)
-
-    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
-    results, overall = {}, None
+    ovr = None
     for idx, k in enumerate(keys):
-        results[k] = accs[:, idx] == gt[:, idx]
-        if idx == 0:
-            overall = accs[:, idx] == gt[:, idx]
-        else:
-            overall &= (accs[:, idx] == gt[:, idx])
+        pt = result[:, idx] == labels[:, idx]
+        A, B = pt.sum().item(), pt.shape[0]
+        man.metrics[idx].update(val=A, num=B)
+        ovr = pt if ovr is None else (ovr & pt)
+    ov.update(ovr.sum().item(), ovr.shape[0])
+    if verbose:
+        iterx.set_postfix_str(man.summary_all(split_string=','))
 
-    results['overall'] = overall
-    results = {k: v.float().mean().item() for k, v in results.items()}
-    return results
+    return man
