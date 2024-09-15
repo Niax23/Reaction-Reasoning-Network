@@ -18,7 +18,7 @@ from utils.dataset import ConditionDataset, uspto_condition_colfn
 
 
 from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding
-from training import train_uspto_condition, eval_uspto_condition
+from ddp_training import ddp_train_uspto_condition, ddp_eval_uspto_condition
 
 
 import torch.distributed as torch_dist
@@ -37,8 +37,7 @@ def make_dir(args):
     return log_dir, model_dir, token_dir
 
 
-def main_worker(worker_idx, args,  log_dir, model_dir):
-
+def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
     print(f'[INFO] Process {worker_idx} start')
     torch_dist.init_process_group(
         backend='nccl', init_method=f'tcp://127.0.0.1:{args.port}',
@@ -48,7 +47,6 @@ def main_worker(worker_idx, args,  log_dir, model_dir):
     device = torch.device(f'cuda:{worker_idx}')
     verbose = (worker_idx == 0)
 
-    all_data, label_mapper = parse_uspto_condition_data(args.data_path)
     all_net = ChemicalReactionNetwork(
         all_data['train_data'] + all_data['val_data'] + all_data['test_data']
     )
@@ -77,7 +75,7 @@ def main_worker(worker_idx, args,  log_dir, model_dir):
 
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=True, collate_fn=lambda x: uspto_condition_colfn(
+        shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
             x, train_net, args.reaction_hop, args.max_neighbors
         ), pin_memory=True, sampler=train_sampler
     )
@@ -129,12 +127,6 @@ def main_worker(worker_idx, args,  log_dir, model_dir):
         'valid_metric': [], 'test_metric': []
     }
 
-    if verbose:
-        with open(token_dir, 'wb') as Fout:
-            pickle.dump(label_mapper, Fout)
-        with open(log_dir, 'w') as Fout:
-            json.dump(log_info, Fout)
-
     best_pref, best_ep = None, None
 
     for ep in range(args.epoch):
@@ -142,12 +134,16 @@ def main_worker(worker_idx, args,  log_dir, model_dir):
             print(f'[INFO] traing at epoch {ep + 1}')
 
         train_sampler.set_epoch(ep)
-        loss = train_uspto_condition(
+        loss = ddp_train_uspto_condition(
             loader=train_loader, model=model, optimizer=optimizer,
-            device=device, warmup=(ep < args.warmup)
+            device=device, warmup=(ep < args.warmup), verbose=verbose
         )
-        val_results = eval_uspto_condition(val_loader, model, device)
-        test_results = eval_uspto_condition(test_loader, model, device)
+        val_results = ddp_eval_uspto_condition(
+            loader=val_loader, model=model, device=device, verbose=verbose
+        )
+        test_results = ddp_eval_uspto_condition(
+            loader=test_loader, model=model, device=device, verbose=verbose
+        )
 
         torch_dist.barrier()
         loss.all_reduct(device)
@@ -162,21 +158,20 @@ def main_worker(worker_idx, args,  log_dir, model_dir):
             print('[TRAIN]', log_info['train_loss'][-1])
             print('[VALID]', log_info['val_metric'][-1])
             print('[TEST]', log_info['test_metric'][-1])
-            
 
             with open(log_dir, 'w') as Fout:
                 json.dump(log_info, Fout, indent=4)
 
             if best_pref is None or val_results['overall'] > best_pref:
                 best_pref, best_ep = val_results['overall'], ep
-                torch.save(model.state_dict(), model_dir)
+                torch.save(model.module.state_dict(), model_dir)
 
-        if ep >= args.warmup:
+        if ep >= args.warmup and ep >= args.step_start:
             lr_scher.step()
 
         if args.early_stop >= 5 and ep > max(10, args.early_stop):
-            val_his = log_info['test_metric'][-args.early_stop:]
-            val_his = [x['trans_acc'] for x in val_his]
+            val_his = log_info['valid_metric'][-args.early_stop:]
+            val_his = [x['overall'] for x in val_his]
             if check_early_stop(val_his):
                 print(f'[INFO {worker_idx}] early_stop_break')
                 break
@@ -185,6 +180,7 @@ def main_worker(worker_idx, args,  log_dir, model_dir):
         return
 
     print('[BEST EP]', best_ep)
+    print('[BEST VAL]', log_info['valid_metric'][best_ep])
     print('[BEST TEST]', log_info['test_metric'][best_ep])
 
 
@@ -266,11 +262,6 @@ if __name__ == '__main__':
         help='the random seed for training'
     )
 
-    parser.add_argument(
-        '--device', type=int, default=-1,
-        help='CUDA device to use; -1 for CPU'
-    )
-
     # data config
 
     parser.add_argument(
@@ -306,8 +297,10 @@ if __name__ == '__main__':
     fix_seed(args.seed)
 
     log_dir, model_dir, token_dir = make_dir(args)
-
+    all_data, label_mapper = parse_uspto_condition_data(args.data_path)
+    with open(token_dir, 'wb') as Fout:
+        pickle.dump(label_mapper, Fout)
     torch_mp.spawn(
         main_worker, nprocs=args.num_gpus,
-        args=(args, log_dir, model_dir, token_dir)
+        args=(args, log_dir, model_dir, all_data, label_mapper)
     )
