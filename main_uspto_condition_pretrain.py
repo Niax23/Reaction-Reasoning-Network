@@ -190,8 +190,9 @@ if __name__ == '__main__':
     )
 
     pos_env = PositionalEncoding(args.dim, args.dropout, maxlen=128)
+    print("load dict")
 
-    with open('./pretrain/embeddings_dict.pkl', 'rb') as f:
+    with open('./pretrain/embeddings_dict_cpu.pkl', 'rb') as f:
         emb_dict = pickle.load(f)
 
     model = PretrainedModel(

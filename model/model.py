@@ -126,6 +126,7 @@ class PretrainedModel(nn.Module):
             torch.nn.Dropout(dropout),
             torch.nn.Linear(net_dim, n_words)
         )
+        self.linear = torch.nn.Linear(300,net_dim)
         self.decoder = torch.nn.TransformerEncoder(t_layer, dec_layers)
         self.reaction_init = torch.nn.Parameter(torch.randn(net_dim))
         self.net_dim = net_dim
@@ -142,7 +143,7 @@ class PretrainedModel(nn.Module):
 
         x_feat_shape = (molecule_mask.shape[0], self.net_dim)
         x_feat = torch.zeros(x_feat_shape).to(molecules)
-        x_feat[molecule_mask] = molecules.squeeze(1)
+        x_feat[molecule_mask] = self.linear(molecules.squeeze(1))
         x_feat[reaction_mask] = self.reaction_init
         edge_feats = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
         net_x, _ = self.gnn2(x_feat, edge_feats, edge_index)
