@@ -70,7 +70,6 @@ def uspto_condition_colfn(batch, G, hop, max_neighbors=None):
     return x_infos + (labels, label_types)
 
 
-
 def reaction_graph_colfn_pretrained(reactions, G, hop, max_neighbors=None):
     mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
         req_ids = G.sample_multiple_subgraph(reactions, hop, max_neighbors)
@@ -82,11 +81,31 @@ def reaction_graph_colfn_pretrained(reactions, G, hop, max_neighbors=None):
     return mol_strs, edge_index, edge_types, mol_mask, reaction_mask, req_ids
 
 
-
-
-
 def uspto_condition_colfn_pretrain(batch, G, hop, max_neighbors=None):
     x_infos = reaction_graph_colfn_pretrained(
+        reactions=[x[0] for x in batch], G=G, hop=hop,
+        max_neighbors=max_neighbors
+    )
+    labels = torch.LongTensor([x[1] for x in batch])
+    label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
+
+    return x_infos + (labels, label_types)
+
+
+def reaction_graph_colfn_react(reactions, G, hop, max_neighbors=None):
+    mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
+        req_ids, smiles_list, id_list = G.sample_multiple_subgraph_with_smiles(
+            reactions, hop, max_neighbors)
+
+    edge_index = torch.LongTensor(edge_index).T
+    mol_mask = torch.BoolTensor(mol_mask)
+    reaction_mask = torch.BoolTensor(reaction_mask)
+
+    return mol_strs, edge_index, edge_types, mol_mask, reaction_mask, req_ids, smiles_list, id_list
+
+
+def uspto_condition_colfn_react(batch, G, hop, max_neighbors=None):
+    x_infos = reaction_graph_colfn_react(
         reactions=[x[0] for x in batch], G=G, hop=hop,
         max_neighbors=max_neighbors
     )

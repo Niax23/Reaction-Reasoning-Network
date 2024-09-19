@@ -126,7 +126,7 @@ class PretrainedModel(nn.Module):
             torch.nn.Dropout(dropout),
             torch.nn.Linear(net_dim, n_words)
         )
-        self.linear = torch.nn.Linear(300,net_dim)
+        self.linear = torch.nn.Linear(300, net_dim)
         self.decoder = torch.nn.TransformerEncoder(t_layer, dec_layers)
         self.reaction_init = torch.nn.Parameter(torch.randn(net_dim))
         self.net_dim = net_dim
@@ -172,6 +172,83 @@ class PretrainedModel(nn.Module):
         reaction_embs = self.encode(
             molecules, molecule_mask, reaction_mask,
             required_ids, edge_index, edge_types
+        )
+
+        result = self.decode(
+            reaction_embs, labels, attn_mask,
+            key_padding_mask=key_padding_mask, seq_types=seq_types
+        )
+        return result
+
+
+class ReactEmbeddingModel(nn.Module):
+    def __init__(
+        self, gnn2, PE, net_dim, heads, dropout,
+        dec_layers, n_words, with_type=False, ntypes=None
+    ):
+        super(ReactEmbeddingModel, self).__init__()
+        self.pos_enc = PE
+        self.gnn2 = gnn2
+        self.edge_emb = torch.nn.ParameterDict({
+            'reactant': torch.nn.Parameter(torch.randn(net_dim)),
+            'product': torch.nn.Parameter(torch.randn(net_dim))
+        })
+        t_layer = torch.nn.TransformerEncoderLayer(
+            net_dim, heads, dim_feedforward=net_dim << 1,
+            batch_first=True, dropout=dropout
+        )
+        self.out_layer = torch.nn.Sequential(
+            torch.nn.Linear(net_dim, net_dim),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(dropout),
+            torch.nn.Linear(net_dim, n_words)
+        )
+        self.linear1 = torch.nn.Linear(300, net_dim)
+        self.linear2 = torch.nn.Linear(600, net_dim)
+        self.decoder = torch.nn.TransformerEncoder(t_layer, dec_layers)
+        self.net_dim = net_dim
+        self.word_emb = torch.nn.Embedding(n_words, net_dim)
+        self.with_type = with_type
+        if self.with_type:
+            assert ntypes is not None, "require type numbers"
+            self.type_embs = torch.nn.Embedding(ntypes, net_dim)
+
+    def encode(
+        self, molecules, molecule_mask, reaction_mask, reaction_feats, reaction_ids, required_ids,
+        edge_index, edge_types
+    ):
+
+        x_feat_shape = (molecule_mask.shape[0], self.net_dim)
+        x_feat = torch.zeros(x_feat_shape).to(molecules)
+        x_feat[molecule_mask] = self.linear1(molecules.squeeze(1))
+        x_feat[reaction_ids] = self.linear2(reaction_feats)
+        edge_feats = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
+        net_x, _ = self.gnn2(x_feat, edge_feats, edge_index)
+        return net_x[required_ids]
+
+    def decode(
+        self, memory, labels, attn_mask, key_padding_mask=None, seq_types=None
+    ):
+        x_input = self.word_emb(labels)
+        if self.with_type:
+            assert seq_types is not None, "Require type inputs"
+            x_input += self.type_embs(seq_types)
+        seq_input = torch.cat([memory.unsqueeze(dim=1), x_input], dim=1)
+        seq_output = self.decoder(
+            src=self.pos_enc(seq_input), mask=attn_mask,
+            src_key_padding_mask=key_padding_mask
+        )
+
+        return self.out_layer(seq_output)
+
+    def forward(
+        self, molecules, molecule_mask, reaction_mask, reaction_feats, reaction_ids, required_ids,
+        edge_index, edge_types, labels, attn_mask,
+        key_padding_mask=None, seq_types=None,
+    ):
+        reaction_embs = self.encode(
+            molecules, molecule_mask, reaction_mask, reaction_feats=reaction_feats, reaction_ids=reaction_ids,
+            required_ids=required_ids, edge_index=edge_index, edge_types=edge_types
         )
 
         result = self.decode(
