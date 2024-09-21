@@ -115,6 +115,45 @@ def eval_uspto_condition(loader, model, device):
     return results
 
 
+def average_mole_for_rxn(mole_embs, n_nodes, mole_ids, rxn_ids):
+    x_temp = torch.zeros([n_node, mol_embs.shape[-1]]).to(mol_embs)
+    x_temp[molecule_ids] = mol_embs
+    device = mole_embs.device
+    rxn_reac_embs = torch.zeros_like(x_temp)
+    rxn_prod_embs = torch.zeros_like(x_temp)
+    rxn_reac_cnt = torch.zeros(n_node).to(device)
+    rxn_prod_cnt = torch.zeros(n_node).to(device)
+
+    rxn_reac_embs.index_add_(
+        index=reactant_pairs[:, 0], dim=0,
+        source=mol_embs[reactant_pairs[:, 1]]
+    )
+    rxn_prod_embs.index_add_(
+        index=product_pairs[:, 0], dim=0,
+        source=mol_embs[product_pairs[:, 1]]
+    )
+
+    rxn_prod_cnt.index_add_(
+        index=product_pairs[:, 0], dim=0,
+        source=torch.ones(product_pairs.shape[0]).to(device)
+    )
+
+    rxn_reac_cnt.index_add_(
+        index=reactant_pairs[:, 0], dim=0,
+        source=torch.ones(product_pairs.shape[0]).to(device)
+    )
+
+    assert torch.all(rxn_reac_cnt[rxn_ids] > 0).item(), \
+        "Some rxn Missing reactant embeddings"
+    assert torch.all(rxn_prod_cnt[rxn_ids] > 0).item(), \
+        "Some rxn missing product embeddings"
+
+    rxn_reac_embs = rxn_reac_embs[rxn_ids] / rxn_reac_cnt[rxn_ids]
+    rxn_prod_embs = rxn_prod_embs[rxn_ids] / rxn_prod_cnt[rxn_ids]
+    rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
+    return rxn_embs
+
+
 def train_uspto_condition_rxn(
     loader, model, optimizer, device, with_rxn=False, warmup=False
 ):
@@ -129,18 +168,10 @@ def train_uspto_condition_rxn(
             n_node, labels, label_types = data
 
         if with_rxn:
-            num_embs, mol_dim = len(rxn_sms), mol_embs.shape[-1]
-            rxn_reac_embs = torch.zeros([num_embs, mol_dim]).to(device)
-            rxn_prod_embs = torch.zeros([num_embs, mol_dim]).to(device)
-            rxn_reac_embs.index_add_(
-                index=reactant_pairs[:, 0], dim=0,
-                source=mol_embs[reactant_pairs[:, 1]]
+            rxn_embs = average_mole_for_rxn(
+                mole_embs=mol_embs, n_nodes=n_node,
+                mole_ids=molecule_ids, rxn_ids=rxn_ids
             )
-            rxn_prod_embs.index_add_(
-                index=product_pairs[:, 0], dim=0,
-                source=mol_embs[product_pairs[:, 1]]
-            )
-            rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
         else:
             rxn_embs = None
 
@@ -176,18 +207,10 @@ def eval_uspto_condition_rxn(loader, model, device, with_rxn=False):
             n_node, labels, label_types = data
 
         if with_rxn:
-            num_embs, mol_dim = len(rxn_sms), mol_embs.shape[-1]
-            rxn_reac_embs = torch.zeros([num_embs, mol_dim]).to(device)
-            rxn_prod_embs = torch.zeros([num_embs, mol_dim]).to(device)
-            rxn_reac_embs.index_add_(
-                index=reactant_pairs[:, 0], dim=0,
-                source=mol_embs[reactant_pairs[:, 1]]
+            rxn_embs = average_mole_for_rxn(
+                mole_embs=mol_embs, n_nodes=n_node,
+                mole_ids=molecule_ids, rxn_ids=rxn_ids
             )
-            rxn_prod_embs.index_add_(
-                index=product_pairs[:, 0], dim=0,
-                source=mol_embs[product_pairs[:, 1]]
-            )
-            rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
         else:
             rxn_embs = None
 
