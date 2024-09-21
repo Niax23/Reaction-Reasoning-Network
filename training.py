@@ -144,17 +144,17 @@ def train_uspto_condition_rxn(
         else:
             rxn_embs = None
 
+        mole_embs = mol_embs.to(device)
         edge_index = edge_index.to(device)
-        mol_mask = mol_mask.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
         sub_mask = generate_square_subsequent_mask(5, device)
 
         res = model(
-            molecules=mole_feats, molecule_mask=mol_mask, required_ids=req_ids,
-            reaction_mask=reaction_mask,  edge_index=edge_index,
-            edge_types=edge_types, labels=labels[:, :-1],
-            attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
+            mole_embs=mole_embs, molecule_ids=molecule_ids, rxn_ids=rxn_ids,
+            required_ids=required_ids, edge_index=edge_index, edge_types=edge_types,
+            labels=labels[:, :-1], attn_mask=sub_mask, n_nodes=n_node,
+            rxn_embs=rxn_embs, key_padding_mask=None, seq_types=label_types,
         )
 
         loss = calc_trans_loss(res, labels, -1000)
@@ -168,29 +168,41 @@ def train_uspto_condition_rxn(
     return np.mean(los_cur)
 
 
-def eval_uspto_condition_pretrain(loader, model, emb_dict, device):
+def eval_uspto_condition_rxn(loader, model, device):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
-        mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-            req_ids, labels, label_types = data
+        mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
+            edge_types, required_ids, reactant_pairs, product_pairs, \
+            n_node, labels, label_types = data
 
-        mole_feats = torch.stack([emb_dict[mole]
-                                  for mole in mol_strs]).to(device)
+        if with_rxn:
+            num_embs, mol_dim = len(rxn_sms), mol_embs.shape[-1]
+            rxn_reac_embs = torch.zeros([num_embs, mol_dim]).to(device)
+            rxn_prod_embs = torch.zeros([num_embs, mol_dim]).to(device)
+            rxn_reac_embs.index_add_(
+                index=reactant_pairs[:, 0], dim=0,
+                source=mol_embs[reactant_pairs[:, 1]]
+            )
+            rxn_prod_embs.index_add_(
+                index=product_pairs[:, 0], dim=0,
+                source=mol_embs[product_pairs[:, 1]]
+            )
+            rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
+        else:
+            rxn_embs = None
+
+        mole_embs = mol_embs.to(device)
         edge_index = edge_index.to(device)
-        mol_mask = mol_mask.to(device)
-        reaction_mask = reaction_mask.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
-
         sub_mask = generate_square_subsequent_mask(5, device)
 
         with torch.no_grad():
             res = model(
-                molecules=mole_feats, molecule_mask=mol_mask,
-                reaction_mask=reaction_mask, required_ids=req_ids,
-                edge_index=edge_index, edge_types=edge_types,
-                labels=labels[:, :-1], attn_mask=sub_mask,
-                key_padding_mask=None, seq_types=label_types
+                mole_embs=mole_embs, molecule_ids=molecule_ids, rxn_ids=rxn_ids,
+                required_ids=required_ids, edge_index=edge_index, edge_types=edge_types,
+                labels=labels[:, :-1], attn_mask=sub_mask, n_nodes=n_node,
+                rxn_embs=rxn_embs, key_padding_mask=None, seq_types=label_types,
             )
             result = convert_log_into_label(res, mod='softmax')
 
@@ -214,123 +226,123 @@ def eval_uspto_condition_pretrain(loader, model, emb_dict, device):
     return results
 
 
-def train_uspto_condition_react_emb(loader, model, optimizer, emb_dict, network, device, warmup=False):
-    model, los_cur = model.train(), []
-    if warmup:
-        warmup_iters = len(loader) - 1
-        warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
+# def train_uspto_condition_react_emb(loader, model, optimizer, emb_dict, network, device, warmup=False):
+#     model, los_cur = model.train(), []
+#     if warmup:
+#         warmup_iters = len(loader) - 1
+#         warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
 
-    for data in tqdm(loader):
-        mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-            req_ids, smiles_list, id_list, labels, label_types = data
+#     for data in tqdm(loader):
+#         mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
+#             req_ids, smiles_list, id_list, labels, label_types = data
 
-        mole_feats = torch.stack([emb_dict[mole]
-                                  for mole in mol_strs]).to(device)
+#         mole_feats = torch.stack([emb_dict[mole]
+#                                   for mole in mol_strs]).to(device)
 
-        reactant_list = [network.get_reaction_substances(
-            reaction, 'reactants')for reaction in smiles_list]
-        reac_feats = []
-        for reactants in reactant_list:
-            reac_feats.append(torch.mean(torch.stack(
-                [emb_dict[reactant] for reactant in reactants]), dim=0))
-        reac_feats = torch.stack(reac_feats)
+#         reactant_list = [network.get_reaction_substances(
+#             reaction, 'reactants')for reaction in smiles_list]
+#         reac_feats = []
+#         for reactants in reactant_list:
+#             reac_feats.append(torch.mean(torch.stack(
+#                 [emb_dict[reactant] for reactant in reactants]), dim=0))
+#         reac_feats = torch.stack(reac_feats)
 
-        product_list = [network.get_reaction_substances(
-            reaction, 'products')for reaction in smiles_list]
-        prod_feats = []
-        for products in product_list:
-            prod_feats.append(torch.mean(torch.stack(
-                [emb_dict[product] for product in products]), dim=0))
-        prod_feats = torch.stack(prod_feats)
-        reac_feats = reac_feats.squeeze(1)
-        prod_feats = prod_feats.squeeze(1)
+#         product_list = [network.get_reaction_substances(
+#             reaction, 'products')for reaction in smiles_list]
+#         prod_feats = []
+#         for products in product_list:
+#             prod_feats.append(torch.mean(torch.stack(
+#                 [emb_dict[product] for product in products]), dim=0))
+#         prod_feats = torch.stack(prod_feats)
+#         reac_feats = reac_feats.squeeze(1)
+#         prod_feats = prod_feats.squeeze(1)
 
-        reaction_feats = torch.cat((reac_feats, prod_feats), dim=1).to(device)
-        edge_index = edge_index.to(device)
-        mol_mask = mol_mask.to(device)
-        reaction_mask = reaction_mask.to(device)
-        labels = labels.to(device)
-        label_types = label_types.to(device)
+#         reaction_feats = torch.cat((reac_feats, prod_feats), dim=1).to(device)
+#         edge_index = edge_index.to(device)
+#         mol_mask = mol_mask.to(device)
+#         reaction_mask = reaction_mask.to(device)
+#         labels = labels.to(device)
+#         label_types = label_types.to(device)
 
-        sub_mask = generate_square_subsequent_mask(5, device)
+#         sub_mask = generate_square_subsequent_mask(5, device)
 
-        res = model(
-            molecules=mole_feats, molecule_mask=mol_mask, required_ids=req_ids,
-            reaction_mask=reaction_mask, reaction_feats=reaction_feats, reaction_ids=id_list,  edge_index=edge_index,
-            edge_types=edge_types, labels=labels[:, :-1],
-            attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
-        )
+#         res = model(
+#             molecules=mole_feats, molecule_mask=mol_mask, required_ids=req_ids,
+#             reaction_mask=reaction_mask, reaction_feats=reaction_feats, reaction_ids=id_list,  edge_index=edge_index,
+#             edge_types=edge_types, labels=labels[:, :-1],
+#             attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
+#         )
 
-        loss = calc_trans_loss(res, labels, -1000)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        los_cur.append(loss.item())
-        if warmup:
-            warmup_sher.step()
+#         loss = calc_trans_loss(res, labels, -1000)
+#         loss.backward()
+#         optimizer.step()
+#         optimizer.zero_grad()
+#         los_cur.append(loss.item())
+#         if warmup:
+#             warmup_sher.step()
 
-    return np.mean(los_cur)
+#     return np.mean(los_cur)
 
 
-def eval_uspto_condition_react_emb(loader, model, emb_dict, network, device):
-    model, accs, gt = model.eval(), [], []
-    for data in tqdm(loader):
-        mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-            req_ids, smiles_list, id_list, labels, label_types = data
+# def eval_uspto_condition_react_emb(loader, model, emb_dict, network, device):
+#     model, accs, gt = model.eval(), [], []
+#     for data in tqdm(loader):
+#         mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
+#             req_ids, smiles_list, id_list, labels, label_types = data
 
-        mole_feats = torch.stack([emb_dict[mole]
-                                  for mole in mol_strs]).to(device)
+#         mole_feats = torch.stack([emb_dict[mole]
+#                                   for mole in mol_strs]).to(device)
 
-        reactant_list = [network.get_reaction_substances(
-            reaction, 'reactants')for reaction in smiles_list]
-        reac_feats = []
-        for reactants in reactant_list:
-            reac_feats.append(torch.mean(torch.stack(
-                [emb_dict[reactant] for reactant in reactants]), dim=0))
-        reac_feats = torch.stack(reac_feats)
+#         reactant_list = [network.get_reaction_substances(
+#             reaction, 'reactants')for reaction in smiles_list]
+#         reac_feats = []
+#         for reactants in reactant_list:
+#             reac_feats.append(torch.mean(torch.stack(
+#                 [emb_dict[reactant] for reactant in reactants]), dim=0))
+#         reac_feats = torch.stack(reac_feats)
 
-        product_list = [network.get_reaction_substances(
-            reaction, 'products')for reaction in smiles_list]
-        prod_feats = []
-        for products in product_list:
-            prod_feats.append(torch.mean(torch.stack(
-                [emb_dict[product] for product in products]), dim=0))
-        prod_feats = torch.stack(prod_feats)
-        reac_feats = reac_feats.squeeze(1)
-        prod_feats = prod_feats.squeeze(1)
-        reaction_feats = torch.cat((reac_feats, prod_feats), dim=1).to(device)
-        edge_index = edge_index.to(device)
-        mol_mask = mol_mask.to(device)
-        reaction_mask = reaction_mask.to(device)
-        labels = labels.to(device)
-        label_types = label_types.to(device)
+#         product_list = [network.get_reaction_substances(
+#             reaction, 'products')for reaction in smiles_list]
+#         prod_feats = []
+#         for products in product_list:
+#             prod_feats.append(torch.mean(torch.stack(
+#                 [emb_dict[product] for product in products]), dim=0))
+#         prod_feats = torch.stack(prod_feats)
+#         reac_feats = reac_feats.squeeze(1)
+#         prod_feats = prod_feats.squeeze(1)
+#         reaction_feats = torch.cat((reac_feats, prod_feats), dim=1).to(device)
+#         edge_index = edge_index.to(device)
+#         mol_mask = mol_mask.to(device)
+#         reaction_mask = reaction_mask.to(device)
+#         labels = labels.to(device)
+#         label_types = label_types.to(device)
 
-        sub_mask = generate_square_subsequent_mask(5, device)
+#         sub_mask = generate_square_subsequent_mask(5, device)
 
-        with torch.no_grad():
-            res = model(
-                molecules=mole_feats, molecule_mask=mol_mask, required_ids=req_ids,
-                reaction_mask=reaction_mask, reaction_feats=reaction_feats, reaction_ids=id_list,  edge_index=edge_index,
-                edge_types=edge_types, labels=labels[:, :-1],
-                attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
-            )
-            result = convert_log_into_label(res, mod='softmax')
+#         with torch.no_grad():
+#             res = model(
+#                 molecules=mole_feats, molecule_mask=mol_mask, required_ids=req_ids,
+#                 reaction_mask=reaction_mask, reaction_feats=reaction_feats, reaction_ids=id_list,  edge_index=edge_index,
+#                 edge_types=edge_types, labels=labels[:, :-1],
+#                 attn_mask=sub_mask, key_padding_mask=None, seq_types=label_types
+#             )
+#             result = convert_log_into_label(res, mod='softmax')
 
-        accs.append(result)
-        gt.append(labels)
+#         accs.append(result)
+#         gt.append(labels)
 
-    accs = torch.cat(accs, dim=0)
-    gt = torch.cat(gt, dim=0)
+#     accs = torch.cat(accs, dim=0)
+#     gt = torch.cat(gt, dim=0)
 
-    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
-    results, overall = {}, None
-    for idx, k in enumerate(keys):
-        results[k] = accs[:, idx] == gt[:, idx]
-        if idx == 0:
-            overall = accs[:, idx] == gt[:, idx]
-        else:
-            overall &= (accs[:, idx] == gt[:, idx])
+#     keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
+#     results, overall = {}, None
+#     for idx, k in enumerate(keys):
+#         results[k] = accs[:, idx] == gt[:, idx]
+#         if idx == 0:
+#             overall = accs[:, idx] == gt[:, idx]
+#         else:
+#             overall &= (accs[:, idx] == gt[:, idx])
 
-    results['overall'] = overall
-    results = {k: v.float().mean().item() for k, v in results.items()}
-    return results
+#     results['overall'] = overall
+#     results = {k: v.float().mean().item() for k, v in results.items()}
+#     return results
