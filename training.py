@@ -115,9 +115,11 @@ def eval_uspto_condition(loader, model, device):
     return results
 
 
-def average_mole_for_rxn(mole_embs, n_nodes, mole_ids, rxn_ids):
+def average_mole_for_rxn(
+    mole_embs, n_nodes, mole_ids, rxn_ids, reactant_pairs, product_pairs
+):
     x_temp = torch.zeros([n_nodes, mole_embs.shape[-1]]).to(mole_embs)
-    x_temp[molecule_ids] = mole_embs
+    x_temp[mole_ids] = mole_embs
     device = mole_embs.device
     rxn_reac_embs = torch.zeros_like(x_temp)
     rxn_prod_embs = torch.zeros_like(x_temp)
@@ -140,7 +142,7 @@ def average_mole_for_rxn(mole_embs, n_nodes, mole_ids, rxn_ids):
 
     rxn_reac_cnt.index_add_(
         index=reactant_pairs[:, 0], dim=0,
-        source=torch.ones(product_pairs.shape[0]).to(device)
+        source=torch.ones(reactant_pairs.shape[0]).to(device)
     )
 
     assert torch.all(rxn_reac_cnt[rxn_ids] > 0).item(), \
@@ -148,8 +150,10 @@ def average_mole_for_rxn(mole_embs, n_nodes, mole_ids, rxn_ids):
     assert torch.all(rxn_prod_cnt[rxn_ids] > 0).item(), \
         "Some rxn missing product embeddings"
 
-    rxn_reac_embs = rxn_reac_embs[rxn_ids] / rxn_reac_cnt[rxn_ids]
-    rxn_prod_embs = rxn_prod_embs[rxn_ids] / rxn_prod_cnt[rxn_ids]
+    rxn_reac_embs = rxn_reac_embs[rxn_ids] / \
+        rxn_reac_cnt[rxn_ids].unsqueeze(-1)
+    rxn_prod_embs = rxn_prod_embs[rxn_ids] / \
+        rxn_prod_cnt[rxn_ids].unsqueeze(-1)
     rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
     return rxn_embs
 
@@ -167,19 +171,22 @@ def train_uspto_condition_rxn(
             edge_types, required_ids, reactant_pairs, product_pairs, \
             n_node, labels, label_types = data
 
-        if with_rxn:
-            rxn_embs = average_mole_for_rxn(
-                mole_embs=mol_embs, n_nodes=n_node,
-                mole_ids=molecule_ids, rxn_ids=rxn_ids
-            )
-        else:
-            rxn_embs = None
-
         mole_embs = mol_embs.to(device)
         edge_index = edge_index.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
         sub_mask = generate_square_subsequent_mask(5, device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+
+        if with_rxn:
+            rxn_embs = average_mole_for_rxn(
+                mole_embs=mol_embs, n_nodes=n_node, mole_ids=molecule_ids,
+                rxn_ids=rxn_ids, reactant_pairs=reactant_pairs,
+                product_pairs=product_pairs
+            )
+        else:
+            rxn_embs = None
 
         res = model(
             mole_embs=mole_embs, molecule_ids=molecule_ids, rxn_ids=rxn_ids,
@@ -206,19 +213,22 @@ def eval_uspto_condition_rxn(loader, model, device, with_rxn=False):
             edge_types, required_ids, reactant_pairs, product_pairs, \
             n_node, labels, label_types = data
 
-        if with_rxn:
-            rxn_embs = average_mole_for_rxn(
-                mole_embs=mol_embs, n_nodes=n_node,
-                mole_ids=molecule_ids, rxn_ids=rxn_ids
-            )
-        else:
-            rxn_embs = None
-
         mole_embs = mol_embs.to(device)
         edge_index = edge_index.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
         sub_mask = generate_square_subsequent_mask(5, device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+
+        if with_rxn:
+            rxn_embs = average_mole_for_rxn(
+                mole_embs=mol_embs, n_nodes=n_node, mole_ids=molecule_ids,
+                rxn_ids=rxn_ids, reactant_pairs=reactant_pairs,
+                product_pairs=product_pairs
+            )
+        else:
+            rxn_embs = None
 
         with torch.no_grad():
             res = model(
