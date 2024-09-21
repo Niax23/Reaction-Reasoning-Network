@@ -116,21 +116,21 @@ def eval_uspto_condition(loader, model, device):
 
 
 def average_mole_for_rxn(mole_embs, n_nodes, mole_ids, rxn_ids):
-    x_temp = torch.zeros([n_node, mol_embs.shape[-1]]).to(mol_embs)
-    x_temp[molecule_ids] = mol_embs
+    x_temp = torch.zeros([n_nodes, mole_embs.shape[-1]]).to(mole_embs)
+    x_temp[molecule_ids] = mole_embs
     device = mole_embs.device
     rxn_reac_embs = torch.zeros_like(x_temp)
     rxn_prod_embs = torch.zeros_like(x_temp)
-    rxn_reac_cnt = torch.zeros(n_node).to(device)
-    rxn_prod_cnt = torch.zeros(n_node).to(device)
+    rxn_reac_cnt = torch.zeros(n_nodes).to(device)
+    rxn_prod_cnt = torch.zeros(n_nodes).to(device)
 
     rxn_reac_embs.index_add_(
         index=reactant_pairs[:, 0], dim=0,
-        source=mol_embs[reactant_pairs[:, 1]]
+        source=x_temp[reactant_pairs[:, 1]]
     )
     rxn_prod_embs.index_add_(
         index=product_pairs[:, 0], dim=0,
-        source=mol_embs[product_pairs[:, 1]]
+        source=x_temp[product_pairs[:, 1]]
     )
 
     rxn_prod_cnt.index_add_(
