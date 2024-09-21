@@ -5,11 +5,11 @@ from torch.optim.lr_scheduler import ExponentialLR
 from utils.data_utils import fix_seed, parse_uspto_condition_data
 from utils.data_utils import check_early_stop
 from utils.network import ChemicalReactionNetwork
-from utils.dataset import ConditionDataset, uspto_condition_colfn_pretrain
+from utils.dataset import ConditionDataset, uspto_condition_colfn_rxn
 
 
-from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding, PretrainedModel
-from training import train_uspto_condition_pretrain, eval_uspto_condition_pretrain
+from model import GATBase, RxnNetworkGNN, PositionalEncoding, PretrainedModel
+from training import train_uspto_condition_rxn, eval_uspto_condition_rxn
 import argparse
 import os
 import time
@@ -58,6 +58,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '--decoder_layer', type=int, default=6,
         help='the num of layers for decoder'
+    )
+    parser.add_argument(
+        '--init_rxn', action='store_true',
+        help='use pretrained features to build rxn feat or not'
     )
 
     # training args
@@ -127,6 +131,11 @@ if __name__ == '__main__':
         help='max neighbors when sampling'
     )
 
+    parser.add_argument(
+        '--pretrained_features', type=str, required=True,
+        help='the path containing pretrained features'
+    )
+
     args = parser.parse_args()
     print(args)
 
@@ -162,24 +171,27 @@ if __name__ == '__main__':
         labels=[x['label'] for x in all_data['test_data']]
     )
 
+    feat_mapper = torch.load(args.pretrained_features)
+    pretrain_dim = feat_mapper['features'].shape[1]
+
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=True, collate_fn=lambda x: uspto_condition_colfn_pretrain(
-            x, train_net, args.reaction_hop, args.max_neighbors
+        shuffle=True, collate_fn=lambda x: uspto_condition_colfn_rxn(
+            x, train_net, args.reaction_hop, feat_mapper, args.max_neighbors
         )
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_pretrain(
-            x, all_net, args.reaction_hop, args.max_neighbors
+        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_rxn(
+            x, all_net, args.reaction_hop, feat_mapper, args.max_neighbors
         )
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_pretrain(
-            x, all_net, args.reaction_hop, args.max_neighbors
+        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_rxn(
+            x, all_net, args.reaction_hop, feat_mapper, args.max_neighbors
         )
     )
 
@@ -190,16 +202,12 @@ if __name__ == '__main__':
     )
 
     pos_env = PositionalEncoding(args.dim, args.dropout, maxlen=128)
-    print("load dict")
-
-    with open('./pretrain/embeddings_dict_cpu.pkl', 'rb') as f:
-        emb_dict = pickle.load(f)
 
     model = PretrainedModel(
-        gnn2=net_gnn, PE=pos_env,
+        gnn2=net_gnn, PE=pos_env, mol_dim=pretrain_dim,
         net_dim=args.dim, heads=args.heads, dropout=args.dropout,
         dec_layers=args.decoder_layer, n_words=len(label_mapper),
-        with_type=True, ntypes=3
+        with_type=True, ntypes=3, init_rxn=args.init_rxn
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -220,14 +228,12 @@ if __name__ == '__main__':
 
     for ep in range(args.epoch):
         print(f'[INFO] training epoch {ep}')
-        loss = train_uspto_condition_pretrain(
+        loss = train_uspto_condition_rxn(
             loader=train_loader, model=model, optimizer=optimizer,
-            emb_dict=emb_dict, device=device, warmup=(ep < args.warmup)
+            device=device, warmup=(ep < args.warmup)
         )
-        val_results = eval_uspto_condition_pretrain(
-            val_loader, model, emb_dict, device)
-        test_results = eval_uspto_condition_pretrain(
-            test_loader, model, emb_dict, device)
+        val_results = eval_uspto_condition_rxn(val_loader, model, device)
+        test_results = eval_uspto_condition_rxn(test_loader, model, device)
 
         print('[Train]:', loss)
         print('[Valid]:', val_results)
