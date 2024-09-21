@@ -168,7 +168,7 @@ def train_uspto_condition_rxn(
     return np.mean(los_cur)
 
 
-def eval_uspto_condition_rxn(loader, model, device):
+def eval_uspto_condition_rxn(loader, model, device, with_rxn=False):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
         mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\

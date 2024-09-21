@@ -32,10 +32,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parser for main experiment')
     # model definition
     parser.add_argument(
-        '--mole_layer', default=5, type=int,
-        help='the num layer of molecule gnn'
-    )
-    parser.add_argument(
         '--dim', type=int, default=300,
         help='the num of dim for the model'
     )
@@ -230,10 +226,14 @@ if __name__ == '__main__':
         print(f'[INFO] training epoch {ep}')
         loss = train_uspto_condition_rxn(
             loader=train_loader, model=model, optimizer=optimizer,
-            device=device, warmup=(ep < args.warmup)
+            device=device, warmup=(ep < args.warmup), with_rxn=args.init_rxn
         )
-        val_results = eval_uspto_condition_rxn(val_loader, model, device)
-        test_results = eval_uspto_condition_rxn(test_loader, model, device)
+        val_results = eval_uspto_condition_rxn(
+            val_loader, model, device, args.init_rxn
+        )
+        test_results = eval_uspto_condition_rxn(
+            test_loader, model, device, args.init_rxn
+        )
 
         print('[Train]:', loss)
         print('[Valid]:', val_results)

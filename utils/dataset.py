@@ -107,7 +107,7 @@ def reaction_graph_colfn_rxn(reactions, G, hop, mapper, max_neighbors=None):
     mole_embs = np.stack([fmap(mapper, x) for x in mole_strs], axis=0)
     mole_embs = torch.from_numpy(mole_embs)
 
-    return mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
+    return mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
         edge_types, required_ids, reactant_pairs, product_pairs, n_node
 
 
