@@ -167,11 +167,11 @@ def train_uspto_condition_rxn(
         warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
 
     for data in tqdm(loader):
-        mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
+        mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
             edge_types, required_ids, reactant_pairs, product_pairs, \
             n_node, labels, label_types = data
 
-        mole_embs = mol_embs.to(device)
+        mole_embs = mole_embs.to(device)
         edge_index = edge_index.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
@@ -181,7 +181,7 @@ def train_uspto_condition_rxn(
 
         if with_rxn:
             rxn_embs = average_mole_for_rxn(
-                mole_embs=mol_embs, n_nodes=n_node, mole_ids=molecule_ids,
+                mole_embs=mole_embs, n_nodes=n_node, mole_ids=molecule_ids,
                 rxn_ids=rxn_ids, reactant_pairs=reactant_pairs,
                 product_pairs=product_pairs
             )
@@ -209,11 +209,11 @@ def train_uspto_condition_rxn(
 def eval_uspto_condition_rxn(loader, model, device, with_rxn=False):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
-        mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
+        mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
             edge_types, required_ids, reactant_pairs, product_pairs, \
             n_node, labels, label_types = data
 
-        mole_embs = mol_embs.to(device)
+        mole_embs = mole_embs.to(device)
         edge_index = edge_index.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
@@ -223,7 +223,7 @@ def eval_uspto_condition_rxn(loader, model, device, with_rxn=False):
 
         if with_rxn:
             rxn_embs = average_mole_for_rxn(
-                mole_embs=mol_embs, n_nodes=n_node, mole_ids=molecule_ids,
+                mole_embs=mole_embs, n_nodes=n_node, mole_ids=molecule_ids,
                 rxn_ids=rxn_ids, reactant_pairs=reactant_pairs,
                 product_pairs=product_pairs
             )
