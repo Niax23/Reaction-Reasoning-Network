@@ -161,7 +161,7 @@ class ChemicalReactionNetwork:
         return molecules, edge_index, edge_types, \
             molecule_mask, reaction_mask, required_ids
 
-    def sample_multiple_subgraph_with_smiles(self, reactions, hop, max_neighbors=None):
+    def sample_multiple_subgraph_rxn(self, reactions, hop, max_neighbors=None):
         assert type(reactions) is list, "Order are import for return results"
         assert all(x in self.reaction_adj_list for x in reactions), \
             "Something that is not an reaction is passed as start vertex"
@@ -196,6 +196,7 @@ class ChemicalReactionNetwork:
 
         item2id, smiles_list, id_list = {}, [], []
         edge_index, edge_types = [], []
+        reactant_pairs, product_pairs = [], []
         for comp, smiles in visited:
             if comp == 'molecule':
                 continue
@@ -211,6 +212,7 @@ class ChemicalReactionNetwork:
                 edge_index.append((this_id, that_id))
                 edge_index.append((that_id, this_id))
                 edge_types.extend(['reactant'] * 2)
+                reactant_pairs.append((this_id, that_id))
 
             for x in self.get_reaction_substances(smiles, 'products'):
                 if x not in item2id:
@@ -219,6 +221,7 @@ class ChemicalReactionNetwork:
                 edge_index.append((this_id, that_id))
                 edge_index.append((that_id, this_id))
                 edge_types.extend(['product'] * 2)
+                product_pairs.append((this_id, that_id))
 
         molecules = [k for k, v in item2id.items() if v[0] == 'molecule']
         molecules.sort(key=lambda x: item2id[x][1])
@@ -231,8 +234,9 @@ class ChemicalReactionNetwork:
 
         required_ids = [item2id[x][1] for x in reactions]
 
-        return molecules, edge_index, edge_types, \
-            molecule_mask, reaction_mask, required_ids, smiles_list, id_list
+        return molecules, edge_index, edge_types, molecule_mask, \
+            reaction_mask, required_ids, smiles_list, id_list, \
+            reactant_pairs, product_pairs
 
     def __str__(self):
         return f"ChemicalReactionNetwork with {len(self.substance_adj_list)}"\
