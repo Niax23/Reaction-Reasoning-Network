@@ -194,16 +194,13 @@ class ChemicalReactionNetwork:
                         visited.add(('reaction', son))
                         Q.append(('reaction', son, depth + 1))
 
-        item2id, smiles_list, id_list = {}, [], []
-        edge_index, edge_types = [], []
+        item2id, edge_index, edge_types = {}, [], []
         reactant_pairs, product_pairs = [], []
         for comp, smiles in visited:
             if comp == 'molecule':
                 continue
             if smiles not in item2id:
                 item2id[smiles] = ('reaction', len(item2id))
-                smiles_list.append(smiles)
-                id_list.append(item2id[smiles][1])
             this_id = item2id[smiles][1]
             for x in self.get_reaction_substances(smiles, 'reactants'):
                 if x not in item2id:
@@ -223,20 +220,20 @@ class ChemicalReactionNetwork:
                 edge_types.extend(['product'] * 2)
                 product_pairs.append((this_id, that_id))
 
-        molecules = [k for k, v in item2id.items() if v[0] == 'molecule']
-        molecules.sort(key=lambda x: item2id[x][1])
-
-        molecule_mask = [0] * len(item2id)
-        reaction_mask = [0] * len(item2id)
-        for k, v in item2id.items():
-            molecule_mask[v[1]] = v[0] == 'molecule'
-            reaction_mask[v[1]] = v[0] != 'molecule'
+        molecules, molecule_ids, rxn_sms, rxn_ids = [], [], [], []
+        for k, (rtype, rid) in item2id.items():
+            if rtype == 'molecule':
+                molecule_ids.append(rid)
+                molecules.append(k)
+            else:
+                rxn_ids.append(rid)
+                rxn_sms.append(k)
 
         required_ids = [item2id[x][1] for x in reactions]
+        n_node = len(item2id)
 
-        return molecules, edge_index, edge_types, molecule_mask, \
-            reaction_mask, required_ids, smiles_list, id_list, \
-            reactant_pairs, product_pairs
+        return molecules, molecule_ids, rxn_sms, rxn_ids, edge_index, \
+            edge_types, required_ids, reactant_pairs, product_pairs, n_node
 
     def __str__(self):
         return f"ChemicalReactionNetwork with {len(self.substance_adj_list)}"\

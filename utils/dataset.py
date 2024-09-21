@@ -70,44 +70,51 @@ def uspto_condition_colfn(batch, G, hop, max_neighbors=None):
     return x_infos + (labels, label_types)
 
 
-def reaction_graph_colfn_pretrained(reactions, G, hop, max_neighbors=None):
-    mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-        req_ids = G.sample_multiple_subgraph(reactions, hop, max_neighbors)
+# def reaction_graph_colfn_pretrained(reactions, G, hop, max_neighbors=None):
+#     mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
+#         req_ids = G.sample_multiple_subgraph(reactions, hop, max_neighbors)
+
+#     edge_index = torch.LongTensor(edge_index).T
+#     mol_mask = torch.BoolTensor(mol_mask)
+#     reaction_mask = torch.BoolTensor(reaction_mask)
+
+#     return mol_strs, edge_index, edge_types, mol_mask, reaction_mask, req_ids
+
+
+# def uspto_condition_colfn_pretrain(batch, G, hop, max_neighbors=None):
+#     x_infos = reaction_graph_colfn_pretrained(
+#         reactions=[x[0] for x in batch], G=G, hop=hop,
+#         max_neighbors=max_neighbors
+#     )
+#     labels = torch.LongTensor([x[1] for x in batch])
+#     label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
+
+#     return x_infos + (labels, label_types)
+
+
+def fmap(mapper, A):
+    return mapper['features'][mapper['smiles2idx'][A]]
+
+
+def reaction_graph_colfn_rxn(reactions, G, hop, mapper, max_neighbors=None):
+    mole_strs, molecule_ids, rxn_sms, rxn_ids, edge_index, edge_types, \
+        required_ids, reactant_pairs, product_pairs, n_node =\
+        G.sample_multiple_subgraph_rxn(reactions, hop, max_neighbors)
 
     edge_index = torch.LongTensor(edge_index).T
-    mol_mask = torch.BoolTensor(mol_mask)
-    reaction_mask = torch.BoolTensor(reaction_mask)
+    product_pairs = torch.LongTensor(product_pairs)
+    reactant_pairs = torch.LongTensor(reactant_pairs)
+    mole_embs = np.stack([fmap(mapper, x) for x in mole_strs], axis=0)
+    mole_embs = torch.from_numpy(mole_embs)
 
-    return mol_strs, edge_index, edge_types, mol_mask, reaction_mask, req_ids
+    return mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
+        edge_types, required_ids, reactant_pairs, product_pairs, n_node
 
 
-def uspto_condition_colfn_pretrain(batch, G, hop, max_neighbors=None):
-    x_infos = reaction_graph_colfn_pretrained(
+def uspto_condition_colfn_rxn(batch, G, hop, mapper, max_neighbors=None):
+    x_infos = reaction_graph_colfn_rxn(
         reactions=[x[0] for x in batch], G=G, hop=hop,
-        max_neighbors=max_neighbors
-    )
-    labels = torch.LongTensor([x[1] for x in batch])
-    label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
-
-    return x_infos + (labels, label_types)
-
-
-def reaction_graph_colfn_react(reactions, G, hop, max_neighbors=None):
-    mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-        req_ids, smiles_list, id_list = G.sample_multiple_subgraph_with_smiles(
-            reactions, hop, max_neighbors)
-
-    edge_index = torch.LongTensor(edge_index).T
-    mol_mask = torch.BoolTensor(mol_mask)
-    reaction_mask = torch.BoolTensor(reaction_mask)
-
-    return mol_strs, edge_index, edge_types, mol_mask, reaction_mask, req_ids, smiles_list, id_list
-
-
-def uspto_condition_colfn_react(batch, G, hop, max_neighbors=None):
-    x_infos = reaction_graph_colfn_react(
-        reactions=[x[0] for x in batch], G=G, hop=hop,
-        max_neighbors=max_neighbors
+        max_neighbors=max_neighbors, mapper=mapper
     )
     labels = torch.LongTensor([x[1] for x in batch])
     label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])

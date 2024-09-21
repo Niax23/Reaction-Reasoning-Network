@@ -115,24 +115,39 @@ def eval_uspto_condition(loader, model, device):
     return results
 
 
-def train_uspto_condition_pretrain(loader, model, optimizer, emb_dict, device, warmup=False):
+def train_uspto_condition_rxn(
+    loader, model, optimizer, device, with_rxn=False, warmup=False
+):
     model, los_cur = model.train(), []
     if warmup:
         warmup_iters = len(loader) - 1
         warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
 
     for data in tqdm(loader):
-        mol_strs, edge_index, edge_types, mol_mask, reaction_mask, \
-            req_ids, labels, label_types = data
+        mol_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
+            edge_types, required_ids, reactant_pairs, product_pairs, \
+            n_node, labels, label_types = data
 
-        mole_feats = torch.stack([emb_dict[mole]
-                                 for mole in mol_strs]).to(device)
+        if with_rxn:
+            num_embs, mol_dim = len(rxn_sms), mol_embs.shape[-1]
+            rxn_reac_embs = torch.zeros([num_embs, mol_dim]).to(device)
+            rxn_prod_embs = torch.zeros([num_embs, mol_dim]).to(device)
+            rxn_reac_embs.index_add_(
+                index=reactant_pairs[:, 0], dim=0,
+                source=mol_embs[reactant_pairs[:, 1]]
+            )
+            rxn_prod_embs.index_add_(
+                index=product_pairs[:, 0], dim=0,
+                source=mol_embs[product_pairs[:, 1]]
+            )
+            rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
+        else:
+            rxn_embs = None
+
         edge_index = edge_index.to(device)
         mol_mask = mol_mask.to(device)
-        reaction_mask = reaction_mask.to(device)
         labels = labels.to(device)
         label_types = label_types.to(device)
-
         sub_mask = generate_square_subsequent_mask(5, device)
 
         res = model(
@@ -160,7 +175,7 @@ def eval_uspto_condition_pretrain(loader, model, emb_dict, device):
             req_ids, labels, label_types = data
 
         mole_feats = torch.stack([emb_dict[mole]
-                                 for mole in mol_strs]).to(device)
+                                  for mole in mol_strs]).to(device)
         edge_index = edge_index.to(device)
         mol_mask = mol_mask.to(device)
         reaction_mask = reaction_mask.to(device)
@@ -210,7 +225,7 @@ def train_uspto_condition_react_emb(loader, model, optimizer, emb_dict, network,
             req_ids, smiles_list, id_list, labels, label_types = data
 
         mole_feats = torch.stack([emb_dict[mole]
-                                 for mole in mol_strs]).to(device)
+                                  for mole in mol_strs]).to(device)
 
         reactant_list = [network.get_reaction_substances(
             reaction, 'reactants')for reaction in smiles_list]
@@ -264,7 +279,7 @@ def eval_uspto_condition_react_emb(loader, model, emb_dict, network, device):
             req_ids, smiles_list, id_list, labels, label_types = data
 
         mole_feats = torch.stack([emb_dict[mole]
-                                 for mole in mol_strs]).to(device)
+                                  for mole in mol_strs]).to(device)
 
         reactant_list = [network.get_reaction_substances(
             reaction, 'reactants')for reaction in smiles_list]
