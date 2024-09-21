@@ -222,13 +222,15 @@ if __name__ == '__main__':
         print(f'[INFO] training epoch {ep}')
         loss = train_uspto_condition_react_emb(
             loader=train_loader, model=model, optimizer=optimizer,
-            emb_dict=emb_dict, network=all_net, device=device, warmup=(
-                ep < args.warmup)
+            emb_dict=emb_dict, network=all_net, device=device, 
+            warmup=(ep < args.warmup)
         )
         val_results = eval_uspto_condition_react_emb(
-            val_loader, model, emb_dict, all_net, device)
+            val_loader, model, emb_dict, all_net, device
+        )
         test_results = eval_uspto_condition_react_emb(
-            test_loader, model, emb_dict, all_net, device)
+            test_loader, model, emb_dict, all_net, device
+        )
 
         print('[Train]:', loss)
         print('[Valid]:', val_results)
