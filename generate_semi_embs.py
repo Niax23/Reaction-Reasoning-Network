@@ -1,19 +1,33 @@
 from pretrain.pretrain_gnn import GNN_graph
-from pretrain.pretrain_gnn_utils import smiles2graph
+from pretrain.pretrain_gnn_utils import smiles2graph_with_am
 import json
 from tqdm import tqdm
 from torch_geometric.data import Data as GData
 import torch
 import argparse
 import numpy as np
+from utils.chemistry_utils import (
+    canonical_smiles, remove_am, get_semi_reaction
+)
+
+
+def col_fn(batch):
+    rc_pd_list, all_graphs = [], []
+    for x in batch:
+        r_smi, r_g = get_semi_reaction(
+            mapped_rxn=x, trans_fn=smiles2graph_with_am, add_pesudo_node=False
+        )
+        prod = remove_am(x.split('>>')[1])
+        rc_pd_list.extend((y, prod) for y in r_smi)
+        all_graphs.extend(r_g)
+    return rc_pd_list, graph_col_fn(all_graphs)
 
 
 def graph_col_fn(data_batch):
     batch_size, max_node = len(data_batch), 0
     edge_idxes, edge_feats, node_feats, lstnode = [], [], [], 0
     batch, ptr, node_per_graph = [], [0], []
-    for idx, smiles in enumerate(data_batch):
-        graph = smiles2graph(smiles)
+    for idx, graph in enumerate(data_batch):
         num_nodes = graph['num_nodes']
         num_edges = graph['edge_index'].shape[1]
 
@@ -44,7 +58,7 @@ def graph_col_fn(data_batch):
         all_batch_mask[idx, :mk] = 1
     result['batch_mask'] = all_batch_mask.bool()
 
-    return data_batch, GData(**result)
+    return GData(**result)
 
 
 if __name__ == '__main__':
@@ -86,12 +100,11 @@ if __name__ == '__main__':
         raw_info = json.load(Fin)
 
     if args.dataset == 'uspto_condition':
-        all_smiles = set()
+        all_mapped_rxn = []
         for entry in tqdm(raw_info):
             new_part = entry.get('new', {})
-            all_smiles.update(new_part.get('reac_list', []))
-            all_smiles.update(new_part.get('prod_list', []))
-            all_smiles.update(new_part.get('shared_list', []))
+            if 'mapped_rxn' in new_part:
+                all_mapped_rxn.append(new_part['mapped_rxn'])
 
     else:
         raise NotImplementedError('Not Implemented Yet')
@@ -106,8 +119,8 @@ if __name__ == '__main__':
     model = model.eval()
 
     mol_loader = torch.utils.data.DataLoader(
-        list(all_smiles), batch_size=args.batch_size, shuffle=False,
-        num_workers=args.num_workers, collate_fn=graph_col_fn
+        all_mapped_rxn, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.num_workers, collate_fn=col_fn
     )
 
     mole_smiles, mole_features = [], []
