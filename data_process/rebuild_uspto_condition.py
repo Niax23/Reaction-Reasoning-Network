@@ -116,6 +116,22 @@ def getx_belong(dt, x):
     return answer
 
 
+def reorder(rxn):
+    reac, prod = rxn.split('>>')
+    reac = reac.split('.')
+    reac.sort(key=lambda x: len(x))
+    return '.'.join(reac) + '>>' + prod
+
+
+def final_check(mapped_rxn):
+    reac, prod = mapped_rxn.split('>>')
+    for x in reac.split('.'):
+        mol = Chem.MolFromSmiles(x)
+        if all(x.GetAtomMapNum() == 0 for x in mol.GetAtoms()):
+            return False
+    return True
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_file', required=True)
@@ -255,13 +271,20 @@ if __name__ == '__main__':
 
     batch_mapper = BatchedMapper(batch_size=args.batch_size)
 
-    rxns = [x['new']['canonical_rxn'] for x in real_out]
+    rxns = [reorder(x['new']['canonical_rxn']) for x in real_out]
 
     results = list(batch_mapper.map_reactions_with_info(rxns))
 
     for idx, p in enumerate(results):
         real_out[idx]['new'].update(p)
 
+    real_out = [x for x in real_out if final_check(x['new']['mapped_rxn'])]
+
     final_out_path = os.path.join(args.output_dir, 'clean_results.json')
     with open(final_out_path, 'w') as Fout:
         json.dump(real_out, Fout, indent=4)
+
+    print('[train cnt]', len([x for x in real_out if x['dataset'] == 'train']))
+    print('[val cnt]', len([x for x in real_out if x['dataset'] == 'val']))
+    print('[test cnt]', len([x for x in real_out if x['dataset'] == 'test']))
+    print('[total cnt]', len(real_out))

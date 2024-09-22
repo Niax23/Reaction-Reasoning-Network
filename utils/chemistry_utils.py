@@ -1,4 +1,5 @@
 from rdkit import Chem
+import numpy as np
 
 
 def canonical_smiles(x):
@@ -28,19 +29,16 @@ def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
     reac = reac.split('.')
     cano_reac_list = [remove_am(x, True) for x in reac]
 
-    am2belong = {}
-    for idx, rc in enumerate(rc):
+    am2belong, idx_remapper = {}, {}
+    for idx, rc in enumerate(reac):
         mol = Chem.MolFromSmiles(rc)
-        am2belong.update({
-            x.GetAtomMapNum(): idx for x in mol.GetAtoms()
-            if x.GetAtomMapNum() != 0
-        })
-
-    idx_remapper = {}
-    # (atom_map, graph_idx): new_idx, a atom might be in
-    # multi graphs as pesudo node when pesudo node added
+        non_zero_am = [x.GetAtomMapNum() for x in mol.GetAtoms()]
+        non_zero_am = [x for x in non_zero_am if x != 0]
+        am2belong.update({x: idx for x in non_zero_am})
+        idx_remapper[idx] = ({x: tdx for tdx, x in enumerate(non_zero_am)})
 
     prod_graph, prod_am2idx = trans_fn(prod)
+    num_bond_feat = prod_graph['edge_feat'].shape[1]
     prod_idx2am = {v: k for k, v in prod_am2idx.items()}
 
     splited_edges = [[] for _ in range(len(reac))]
@@ -49,19 +47,12 @@ def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
     for i in range(prod_graph['edge_index'].shape[1]):
         start = int(prod_graph['edge_index'][0][i])
         end = int(prod_graph['edge_index'][1][i])
-
-        start_belong = am2belong[start]
-        end_belong = am2belong[end]
         start_am = prod_idx2am[start]
         end_am = prod_idx2am[end]
+        start_belong = am2belong[start_am]
+        end_belong = am2belong[end_am]
 
         if start_belong == end_belong:
-            if start_belong not in idx_remapper:
-                idx_remapper[start_belong] = {}
-
-            add_reidx(idx_remapper[start_belong], start_am)
-            add_reidx(idx_remapper[start_belong], end_am)
-
             splited_edges[start_belong].append((
                 idx_remapper[start_belong][start_am],
                 idx_remapper[start_belong][end_am]
@@ -70,11 +61,6 @@ def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
             splited_ettr[start_belong].append(prod_graph['edge_feat'][i])
 
         elif add_pesudo_node:
-            if start_belong not in idx_remapper:
-                idx_remapper[start_belong] = {}
-            if end_belong not in idx_remapper:
-                idx_remapper[end_belong] = {}
-
             add_reidx(idx_remapper[start_belong], start_am)
             add_reidx(idx_remapper[start_belong], end_am)
 
@@ -95,6 +81,9 @@ def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
             splited_ettr[end_belong].append(prod_graph['edge_feat'][i])
 
     final_graphs = []
+    print(mapped_rxn)
+    print(idx_remapper)
+
     for i, p in enumerate(splited_edges):
         node_feat = [0] * len(idx_remapper[i])
         pesudo_mask = [0] * len(idx_remapper[i])
@@ -105,8 +94,16 @@ def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
 
         final_graphs.append({
             'node_feat': np.stack(node_feat, axis=0),
-            'edge_feat': np.stack(splited_ettr[i], axis=0),
-            'edge_index': np.array(splited_edges[i], dtype=np.int64).T,
+            'edge_feat': (
+                np.stack(splited_ettr[i], axis=0)
+                if len(splited_ettr[i]) > 0 else
+                np.empty((0, num_bond_feat), dtype=np.int64)
+            ),
+            'edge_index': (
+                np.array(splited_edges[i], dtype=np.int64).T
+                if len(splited_edges[i]) > 0 else
+                np.empty((2, 0), dtype=np.int64)
+            ),
             'num_nodes': len(idx_remapper[i]),
             'pesudo_mask': np.array(pesudo_mask, dtype=bool)
         })
