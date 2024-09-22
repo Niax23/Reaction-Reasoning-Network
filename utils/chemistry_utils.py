@@ -107,7 +107,8 @@ def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
             'node_feat': np.stack(node_feat, axis=0),
             'edge_feat': np.stack(splited_ettr[i], axis=0),
             'edge_index': np.array(splited_edges[i], dtype=np.int64).T,
-            'num_nodes': len(idx_remapper[i])
+            'num_nodes': len(idx_remapper[i]),
+            'pesudo_mask': np.array(pesudo_mask, dtype=bool)
         })
 
     return cano_reac_list, final_graphs

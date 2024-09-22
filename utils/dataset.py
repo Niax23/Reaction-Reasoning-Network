@@ -20,7 +20,7 @@ class ConditionDataset(torch.utils.data.Dataset):
 
 def graph_col_fn(batch):
     batch_size, edge_idx, node_feat, edge_feat = len(batch), [], [], []
-    node_ptr, node_batch, lstnode = [0], [], 0
+    node_ptr, node_batch, lstnode, pes_mask = [0], [], 0, []
     max_node = max(x['num_nodes'] for x in batch)
     batch_mask = torch.zeros(batch_size, max_node).bool()
 
@@ -30,6 +30,9 @@ def graph_col_fn(batch):
         edge_feat.append(gp['edge_feat'])
         edge_idx.append(gp['edge_index'] + lstnode)
         batch_mask[idx, :node_cnt] = True
+
+        if 'pesudo_mask' in gp:
+            pes_mask.append(gp['pesudo_mask'])
 
         lstnode += node_cnt
         node_batch.append(np.ones(node_cnt, dtype=np.int64) * idx)
@@ -44,6 +47,10 @@ def graph_col_fn(batch):
         'num_nodes': lstnode,
         'batch_mask': batch_mask
     }
+
+    if len(pes_mask) > 0:
+        result['pesudo_mask'] = torch.from_numpy(npcat(pes_mask, axis=0))
+
     return torch_geometric.data.Data(**result)
 
 
