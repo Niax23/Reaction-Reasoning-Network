@@ -8,6 +8,7 @@ import argparse
 from tqdm import tqdm
 from rxnmapper import BatchedMapper
 
+
 def canonical_smiles(x):
     mol = Chem.MolFromSmiles(x)
     return x if mol is None else Chem.MolToSmiles(mol)
@@ -19,7 +20,6 @@ def remove_am(x, canonical=True):
         if atom.HasProp('molAtomMapNumber'):
             atom.ClearProp('molAtomMapNumber')
     return Chem.MolToSmiles(mol, canonical=canonical)
-
 
 
 def resplit(moles):
@@ -152,7 +152,7 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
         can_noam_p = remove_am(p, canonical=True)
         for idx, x in enumerate(reac_dict_list):
             if x.get(can_noam_p, 0) > 0:
-                x[p] -= 1
+                x[can_noam_p] -= 1
                 mapped_reac_out[idx].append(p)
                 break
 
@@ -160,7 +160,7 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
         can_noam_p = remove_am(p, canonical=True)
         for idx, x in enumerate(prod_dict_list):
             if x.get(can_noam_p, 0) > 0:
-                x[p] -= 1
+                x[can_noam_p] -= 1
                 mapped_prod_out[idx].append(p)
                 break
 
@@ -342,11 +342,11 @@ if __name__ == '__main__':
         real_out[idx]['new'].update(p)
 
     final_out, unmatched = [], []
-    for line in real_out:
+    for line in tqdm(real_out):
         mapped_reac_out, mapped_prod_out, unmatch, valid = \
             get_mapped_list_part(
-                reac_list=line['new']['reac_list'], 
-                prod_list=line['new']['prod_list'], 
+                reac_list=line['new']['reac_list'],
+                prod_list=line['new']['prod_list'],
                 mapped_rxn=line['new']['mapped_rxn']
             )
         if not valid or len(unmatch) > 0:
