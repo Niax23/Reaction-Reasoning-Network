@@ -8,10 +8,7 @@ import argparse
 from tqdm import tqdm
 from rxnmapper import BatchedMapper
 
-
-def canonical_smiles(x):
-    mol = Chem.MolFromSmiles(x)
-    return Chem.MolToSmiles(mol)
+from utils.chemistry_utils import canonical_smiles, remove_am
 
 
 def resplit(moles):
@@ -123,13 +120,68 @@ def reorder(rxn):
     return '.'.join(reac) + '>>' + prod
 
 
-def final_check(mapped_rxn):
-    reac, prod = mapped_rxn.split('>>')
-    for x in reac.split('.'):
-        mol = Chem.MolFromSmiles(x)
-        if all(x.GetAtomMapNum() == 0 for x in mol.GetAtoms()):
-            return False
-    return True
+def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
+    reac_dict_list, prod_dict_list = [], []
+    for x in reac_list:
+        reac_dict = {}
+        for p in x.split('.'):
+            reac_dict[p] = reac_dict.get(p, 0) + 1
+        reac_dict_list.append(reac_dict)
+
+    for x in prod_list:
+        prod_dict = {}
+        for p in x.split('.'):
+            prod_dict[p] = prod_dict.get(p, 0) + 1
+        prod_dict_list.append(prod_dict)
+
+    mapped_reac, mapped_prod = mapped_rxn.split('>>')
+    mapped_reac_out = [[] for _ in reac_dict_list]
+    mapped_prod_out = [[] for _ in prod_dict_list]
+    for p in mapped_reac.split('.'):
+        can_noam_p = remove_am(p, canonical=True)
+        for idx, x in enumerate(reac_dict_list):
+            if x.get(can_noam_p, 0) > 0:
+                x[p] -= 1
+                mapped_reac_out[idx].append(p)
+                break
+
+    for p in mapped_prod.split('.'):
+        can_noam_p = remove_am(p, canonical=True)
+        for idx, x in enumerate(prod_dict_list):
+            if x.get(can_noam_p, 0) > 0:
+                x[p] -= 1
+                mapped_prod_out[idx].append(p)
+                break
+
+    for x in reac_dict_list:
+        if any(v > 0 for v in x.values()):
+            raise ValueError('Reactant Matched Failed')
+
+    for x in prod_dict_list:
+        if any(v > 0 for v in x.values()):
+            raise ValueError('Product Matched Failed')
+
+    mapped_prod_out = ['.'.join(x) for x in mapped_prod_out]
+
+    unmatch_reac_out, mapped_reac_out = [], []
+
+    for x in mapped_reac_out:
+        x_ers = '.'.join(x)
+        x_mol = Chem.MolFromSmiles(x_ers)
+        if all(t.GetAtomMapNum() == 0 for t in x_mol.GetAtoms()):
+            unmatch_reac_out.append(x_ers)
+        else:
+            mapped_reac_out.append(x_ers)
+
+    flag = True
+
+    for x in mapped_prod_out:
+        tmol = Chem.MolFromSmiles(x)
+        if any(t.GetAtomMapNum() == 0 for t in tmol.GetAtoms()):
+            flag = False
+            break
+
+    return mapped_reac_out, mapped_prod_out, unmatch_reac_out, flag
 
 
 if __name__ == '__main__':
@@ -278,11 +330,28 @@ if __name__ == '__main__':
     for idx, p in enumerate(results):
         real_out[idx]['new'].update(p)
 
-    real_out = [x for x in real_out if final_check(x['new']['mapped_rxn'])]
+    final_out, unmatched = [], []
+    for line in real_out:
+        mapped_reac_out, mapped_prod_out, unmatch, valid = \
+            get_mapped_list_part(
+                reac_list=line['new']['reac_list'], 
+                prod_list=line['new']['prod_list'], 
+                mapped_rxn=line['new']['mapped_rxn']
+            )
+        if not valid or len(unmatch) > 0:
+            unmatched.append(line)
+        else:
+            final_out.append(line)
+
+    print('[INFO] unmatched', len(unmatched))
 
     final_out_path = os.path.join(args.output_dir, 'clean_results.json')
     with open(final_out_path, 'w') as Fout:
-        json.dump(real_out, Fout, indent=4)
+        json.dump(final_out, Fout, indent=4)
+
+    unmatch_path = os.path.join(args.output_dir, 'unmatched.json')
+    with open(unmatch_path, 'w') as Fout:
+        json.dump(unmatched, Fout)
 
     print('[train cnt]', len([x for x in real_out if x['dataset'] == 'train']))
     print('[val cnt]', len([x for x in real_out if x['dataset'] == 'val']))
