@@ -8,7 +8,18 @@ import argparse
 from tqdm import tqdm
 from rxnmapper import BatchedMapper
 
-from utils.chemistry_utils import canonical_smiles, remove_am
+def canonical_smiles(x):
+    mol = Chem.MolFromSmiles(x)
+    return x if mol is None else Chem.MolToSmiles(mol)
+
+
+def remove_am(x, canonical=True):
+    mol = Chem.MolFromSmiles(x)
+    for atom in mol.GetAtoms():
+        if atom.HasProp('molAtomMapNumber'):
+            atom.ClearProp('molAtomMapNumber')
+    return Chem.MolToSmiles(mol, canonical=canonical)
+
 
 
 def resplit(moles):
