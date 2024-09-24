@@ -166,11 +166,19 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
 
     for x in reac_dict_list:
         if any(v > 0 for v in x.values()):
-            raise ValueError('Reactant Matched Failed')
+            print('[mapped_rxn]', mapped_rxn)
+            print('[mapped_reac]', mapped_reac)
+            print('[reac_dict]', reac_dict_list)
+            print('[reac_list]', reac_list)
+            return mapped_reac_out, mapped_prod_out, [], False
 
     for x in prod_dict_list:
         if any(v > 0 for v in x.values()):
-            raise ValueError('Product Matched Failed')
+            print('[mapped_rxn]', mapped_rxn)
+            print('[mapped_prod]', mapped_prod)
+            print('[prod_dict]', prod_dict_list)
+            print('[prod_list]', prod_list)
+            return mapped_reac_out, mapped_prod_out, [], False
 
     mapped_prod_out = ['.'.join(x) for x in mapped_prod_out]
 

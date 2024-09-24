@@ -12,7 +12,10 @@ def remove_am(x, canonical=True):
     for atom in mol.GetAtoms():
         if atom.HasProp('molAtomMapNumber'):
             atom.ClearProp('molAtomMapNumber')
-    return Chem.MolToSmiles(mol, canonical=canonical)
+    if not canonical:
+        return Chem.MolToSmiles(mol, canonical=False)
+    else:
+        return canonical_smiles(Chem.MolToSmiles(mol))
 
 
 def get_semi_reaction(mapped_rxn, trans_fn, add_pesudo_node=False):
