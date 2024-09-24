@@ -94,8 +94,13 @@ def split_equal(reac_list, prod_list):
         prod_cnter[k] -= share_cnt
         shared_list.extend([k] * share_cnt)
 
-    new_reac_list = [k for k, v in reac_cnter.items() if v > 0]
-    new_prod_list = [k for k, v in prod_cnter.items() if v > 0]
+    new_reac_list = []
+    for k, v in reac_cnter.items():
+        new_reac_list.extend([k] * v)
+
+    new_prod_list = []
+    for k, v in reac_cnter.items():
+        new_prod_list.extend([k] * v)
 
     return new_reac_list, new_prod_list, shared_list
 
@@ -363,9 +368,9 @@ if __name__ == '__main__':
                 mapped_rxn=line['new']['mapped_rxn']
             )
 
-        line['mapped_reac_list'] = mapped_reac_out
-        line['mapped_prod_list'] = mapped_prod_out
-        line['unmatch'] = unmatch
+        line['new']['mapped_reac_list'] = mapped_reac_out
+        line['new']['mapped_prod_list'] = mapped_prod_out
+        line['new']['unmatch'] = unmatch
         if not valid or len(unmatch) > 0:
             unmatched.append(line)
         else:
@@ -379,7 +384,7 @@ if __name__ == '__main__':
 
     unmatch_path = os.path.join(args.output_dir, 'unmatched.json')
     with open(unmatch_path, 'w') as Fout:
-        json.dump(unmatched, Fout)
+        json.dump(unmatched, Fout, indent=4)
 
     print('[train cnt]', len([x for x in real_out if x['dataset'] == 'train']))
     print('[val cnt]', len([x for x in real_out if x['dataset'] == 'val']))

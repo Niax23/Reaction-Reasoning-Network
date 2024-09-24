@@ -13,11 +13,12 @@ from utils.chemistry_utils import (
 
 def col_fn(batch):
     rc_pd_list, all_graphs = [], []
-    for x in batch:
+    for a, b in batch:
         r_smi, r_g = get_semi_reaction(
-            mapped_rxn=x, trans_fn=smiles2graph_with_am, add_pesudo_node=False
+            mapped_reac_list=a, mapped_prod_list=b,
+            trans_fn=smiles2graph_with_am, add_pesudo_node=False
         )
-        prod = remove_am(x.split('>>')[1])
+        prod = remove_am('.'.join(b))
         rc_pd_list.extend((y, prod) for y in r_smi)
         all_graphs.extend(r_g)
     return rc_pd_list, graph_col_fn(all_graphs)
@@ -102,9 +103,11 @@ if __name__ == '__main__':
     if args.dataset == 'uspto_condition':
         all_mapped_rxn = []
         for entry in tqdm(raw_info):
-            new_part = entry.get('new', {})
-            if 'mapped_rxn' in new_part:
-                all_mapped_rxn.append(new_part['mapped_rxn'])
+            info_tup = (
+                entry['new']['mapped_reac_list'],
+                entry['new']['mapped_prod_list']
+            )
+            all_mapped_rxn.append(info_tup)
 
     else:
         raise NotImplementedError('Not Implemented Yet')
