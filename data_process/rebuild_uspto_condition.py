@@ -19,7 +19,11 @@ def remove_am(x, canonical=True):
     for atom in mol.GetAtoms():
         if atom.HasProp('molAtomMapNumber'):
             atom.ClearProp('molAtomMapNumber')
-    return Chem.MolToSmiles(mol, canonical=canonical)
+
+    if not canonical:
+        return Chem.MolToSmiles(mol, canonical=False)
+    else:
+        return canonical_smiles(Chem.MolToSmiles(mol))
 
 
 def resplit(moles):
@@ -148,6 +152,7 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
     mapped_reac, mapped_prod = mapped_rxn.split('>>')
     mapped_reac_out = [[] for _ in reac_dict_list]
     mapped_prod_out = [[] for _ in prod_dict_list]
+
     for p in mapped_reac.split('.'):
         can_noam_p = remove_am(p, canonical=True)
         for idx, x in enumerate(reac_dict_list):
@@ -170,7 +175,7 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
             print('[mapped_reac]', mapped_reac)
             print('[reac_dict]', reac_dict_list)
             print('[reac_list]', reac_list)
-            return mapped_reac_out, mapped_prod_out, [], False
+            return None, None, None, False
 
     for x in prod_dict_list:
         if any(v > 0 for v in x.values()):
@@ -178,11 +183,11 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
             print('[mapped_prod]', mapped_prod)
             print('[prod_dict]', prod_dict_list)
             print('[prod_list]', prod_list)
-            return mapped_reac_out, mapped_prod_out, [], False
+            return None, None, None, False
 
     mapped_prod_out = ['.'.join(x) for x in mapped_prod_out]
 
-    unmatch_reac_out, mapped_reac_out = [], []
+    unmatch_reac_out, mapped_reac_final = [], []
 
     for x in mapped_reac_out:
         x_ers = '.'.join(x)
@@ -190,7 +195,7 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
         if all(t.GetAtomMapNum() == 0 for t in x_mol.GetAtoms()):
             unmatch_reac_out.append(x_ers)
         else:
-            mapped_reac_out.append(x_ers)
+            mapped_reac_final.append(x_ers)
 
     flag = True
 
@@ -200,7 +205,7 @@ def get_mapped_list_part(reac_list, prod_list, mapped_rxn):
             flag = False
             break
 
-    return mapped_reac_out, mapped_prod_out, unmatch_reac_out, flag
+    return mapped_reac_final, mapped_prod_out, unmatch_reac_out, flag
 
 
 if __name__ == '__main__':
@@ -357,6 +362,10 @@ if __name__ == '__main__':
                 prod_list=line['new']['prod_list'],
                 mapped_rxn=line['new']['mapped_rxn']
             )
+
+        line['mapped_reac_list'] = mapped_reac_out
+        line['mapped_prod_list'] = mapped_prod_out
+        line['unmatch'] = unmatch
         if not valid or len(unmatch) > 0:
             unmatched.append(line)
         else:
