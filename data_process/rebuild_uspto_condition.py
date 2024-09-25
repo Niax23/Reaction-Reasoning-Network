@@ -99,7 +99,7 @@ def split_equal(reac_list, prod_list):
         new_reac_list.extend([k] * v)
 
     new_prod_list = []
-    for k, v in reac_cnter.items():
+    for k, v in prod_cnter.items():
         new_prod_list.extend([k] * v)
 
     return new_reac_list, new_prod_list, shared_list
@@ -361,6 +361,12 @@ if __name__ == '__main__':
 
     final_out, unmatched = [], []
     for line in tqdm(real_out):
+        if 'mapped_rxn' not in line['new']:
+            line['new']['mapped_rxn'] = None
+            line['new']['confidence'] = 0
+            unmatched.append(line)
+            continue
+
         mapped_reac_out, mapped_prod_out, unmatch, valid = \
             get_mapped_list_part(
                 reac_list=line['new']['reac_list'],
