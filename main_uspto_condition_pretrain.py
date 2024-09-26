@@ -4,12 +4,12 @@ from torch.optim.lr_scheduler import ExponentialLR
 
 from utils.data_utils import fix_seed, parse_uspto_condition_data
 from utils.data_utils import check_early_stop
-from utils.network import RichInfoReactionNetwork
+from utils.network import ChemicalReactionNetwork
 from utils.dataset import ConditionDataset, uspto_condition_colfn_rxn
 
 
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, PretrainedModel
-from training import train_uspto_condition_semi, eval_uspto_condition_semi
+from training import train_uspto_condition_rxn, eval_uspto_condition_rxn
 import argparse
 import os
 import time
@@ -131,10 +131,6 @@ if __name__ == '__main__':
         '--pretrained_features', type=str, required=True,
         help='the path containing pretrained features'
     )
-    parser.add_argument(
-        '--semi_ckpt', required=True, type=str,
-        help='the path of checkpoint for semi templates'
-    )
 
     args = parser.parse_args()
     print(args)
@@ -172,30 +168,26 @@ if __name__ == '__main__':
     )
 
     feat_mapper = torch.load(args.pretrained_features)
-    semi_mapper = torch.load(args.semi_ckpt)
     pretrain_dim = feat_mapper['features'].shape[1]
 
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=True, collate_fn=lambda x: uspto_condition_colfn_semi(
-            batch=x, G=train_net, hop=args.reaction_hop, fmapper=feat_mapper,
-            emapper=semi_mapper, max_neighbors=args.max_neighbors
+        shuffle=True, collate_fn=lambda x: uspto_condition_colfn_rxn(
+            x, train_net, args.reaction_hop, feat_mapper, args.max_neighbors
         )
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_semi(
-            batch=x, G=all_net, hop=args.reaction_hop, fmapper=feat_mapper,
-            emapper=semi_mapper, max_neighbors=args.max_neighbors
+        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_rxn(
+            x, all_net, args.reaction_hop, feat_mapper, args.max_neighbors
         )
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: uspto_condition_colfn_rxn(
-            batch=x, G=all_net, hop=args.reaction_hop, fmapper=feat_mapper,
-            emapper=semi_mapper, max_neighbors=args.max_neighbors
+            x, all_net, args.reaction_hop, feat_mapper, args.max_neighbors
         )
     )
 

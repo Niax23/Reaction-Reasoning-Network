@@ -5,11 +5,11 @@ from torch.optim.lr_scheduler import ExponentialLR
 from utils.data_utils import fix_seed, parse_uspto_condition_data
 from utils.data_utils import check_early_stop
 from utils.network import ChemicalReactionNetwork
-from utils.dataset import ConditionDataset, uspto_condition_colfn_react
+from utils.dataset import ConditionDataset, uspto_condition_colfn_semi
 
 
-from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding, SemiModel
-from training import train_uspto_condition_react_emb, eval_uspto_condition_react_emb
+from model import GATBase, RxnNetworkGNN, PositionalEncoding, SemiModel
+from training import train_uspto_condition_semi, eval_uspto_condition_semi
 import argparse
 import os
 import time
@@ -31,10 +31,6 @@ def make_dir(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parser for main experiment')
     # model definition
-    parser.add_argument(
-        '--mole_layer', default=5, type=int,
-        help='the num layer of molecule gnn'
-    )
     parser.add_argument(
         '--dim', type=int, default=300,
         help='the num of dim for the model'
@@ -58,6 +54,10 @@ if __name__ == '__main__':
     parser.add_argument(
         '--decoder_layer', type=int, default=6,
         help='the num of layers for decoder'
+    )
+    parser.add_argument(
+        '--init_rxn', action='store_true',
+        help='use pretrained features to build rxn feat or not'
     )
 
     # training args
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         help='the step to start lr decay'
     )
     parser.add_argument(
-        '--base_log', type=str, default='log_dec_react_emb',
+        '--base_log', type=str, default='log_pretrain',
         help='the path for contraining log'
     )
     parser.add_argument(
@@ -127,6 +127,15 @@ if __name__ == '__main__':
         help='max neighbors when sampling'
     )
 
+    parser.add_argument(
+        '--pretrained_features', type=str, required=True,
+        help='the path containing pretrained features'
+    )
+    parser.add_argument(
+        '--semi_features', type=str, required=True,
+        help='the path containing semi template features'
+    )
+
     args = parser.parse_args()
     print(args)
 
@@ -162,24 +171,31 @@ if __name__ == '__main__':
         labels=[x['label'] for x in all_data['test_data']]
     )
 
+    feat_mapper = torch.load(args.pretrained_features)
+    semi_mapper = torch.load(args.semi_ckpt)
+    pretrain_dim = feat_mapper['features'].shape[1]
+
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=True, collate_fn=lambda x: uspto_condition_colfn_react(
-            x, train_net, args.reaction_hop, args.max_neighbors
+        shuffle=True, collate_fn=lambda x: uspto_condition_colfn_semi(
+            batch=x, G=train_net, hop=args.reaction_hop, fmapper=feat_mapper,
+            emapper=semi_mapper, max_neighbors=args.max_neighbors
         )
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_react(
-            x, all_net, args.reaction_hop, args.max_neighbors
+        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_semi(
+            batch=x, G=all_net, hop=args.reaction_hop, fmapper=feat_mapper,
+            emapper=semi_mapper, max_neighbors=args.max_neighbors
         )
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_react(
-            x, all_net, args.reaction_hop, args.max_neighbors
+        shuffle=False, collate_fn=lambda x: uspto_condition_colfn_semi(
+            batch=x, G=all_net, hop=args.reaction_hop, fmapper=feat_mapper,
+            emapper=semi_mapper, max_neighbors=args.max_neighbors
         )
     )
 
@@ -190,16 +206,12 @@ if __name__ == '__main__':
     )
 
     pos_env = PositionalEncoding(args.dim, args.dropout, maxlen=128)
-    print("load dict")
 
-    with open('./pretrain/embeddings_dict_cpu.pkl', 'rb') as f:
-        emb_dict = pickle.load(f)
-
-    model = ReactEmbeddingModel(
-        gnn2=net_gnn, PE=pos_env,
+    model = SemiModel(
+        gnn2=net_gnn, PE=pos_env, mol_dim=pretrain_dim,
         net_dim=args.dim, heads=args.heads, dropout=args.dropout,
         dec_layers=args.decoder_layer, n_words=len(label_mapper),
-        with_type=True, ntypes=3
+        with_type=True, ntypes=3, init_rxn=args.init_rxn
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -220,16 +232,15 @@ if __name__ == '__main__':
 
     for ep in range(args.epoch):
         print(f'[INFO] training epoch {ep}')
-        loss = train_uspto_condition_react_emb(
+        loss = train_uspto_condition_semi(
             loader=train_loader, model=model, optimizer=optimizer,
-            emb_dict=emb_dict, network=all_net, device=device, 
-            warmup=(ep < args.warmup)
+            device=device, warmup=(ep < args.warmup), with_rxn=args.init_rxn
         )
-        val_results = eval_uspto_condition_react_emb(
-            val_loader, model, emb_dict, all_net, device
+        val_results = eval_uspto_condition_semi(
+            val_loader, model, device, args.init_rxn
         )
-        test_results = eval_uspto_condition_react_emb(
-            test_loader, model, emb_dict, all_net, device
+        test_results = eval_uspto_condition_semi(
+            test_loader, model, device, args.init_rxn
         )
 
         print('[Train]:', loss)
