@@ -315,8 +315,8 @@ def eval_uspto_condition_semi(loader, model, device, with_rxn=False):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
         mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
-            edge_types, edge_attrs, edge_semi_mask, required_ids, \
-            reactant_pairs, product_pairs, n_node,  label_types = data
+            edge_types, edge_attrs, required_ids, reactant_pairs, \
+            product_pairs, n_node, labels, label_types = data
 
         mole_embs = mole_embs.to(device)
         edge_index = edge_index.to(device)

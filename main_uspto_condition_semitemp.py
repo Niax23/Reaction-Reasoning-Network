@@ -4,7 +4,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 
 from utils.data_utils import fix_seed, parse_uspto_condition_data
 from utils.data_utils import check_early_stop
-from utils.network import ChemicalReactionNetwork
+from utils.network import RichInfoReactionNetwork
 from utils.dataset import ConditionDataset, uspto_condition_colfn_semi
 
 
@@ -149,12 +149,12 @@ if __name__ == '__main__':
     log_dir, model_dir, token_dir = make_dir(args)
 
     all_data, label_mapper = parse_uspto_condition_data(args.data_path)
-    all_net = ChemicalReactionNetwork(
+    all_net = RichInfoReactionNetwork(
         all_data['train_data'] + all_data['val_data'] + all_data['test_data']
     )
 
     train_net = all_net if args.transductive else\
-        ChemicalReactionNetwork(all_data['train_data'])
+        RichInfoReactionNetwork(all_data['train_data'])
 
     train_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['train_data']],
@@ -172,7 +172,7 @@ if __name__ == '__main__':
     )
 
     feat_mapper = torch.load(args.pretrained_features)
-    semi_mapper = torch.load(args.semi_ckpt)
+    semi_mapper = torch.load(args.semi_features)
     pretrain_dim = feat_mapper['features'].shape[1]
 
     train_loader = DataLoader(

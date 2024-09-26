@@ -13,13 +13,12 @@ from utils.chemistry_utils import (
 
 def col_fn(batch):
     rc_pd_list, all_graphs = [], []
-    for a, b in batch:
+    for a, b, c in batch:
         r_smi, r_g = get_semi_reaction(
             mapped_reac_list=a, mapped_prod_list=b,
             trans_fn=smiles2graph_with_am, add_pesudo_node=False
         )
-        prod = remove_am('.'.join(b))
-        rc_pd_list.extend((y, prod) for y in r_smi)
+        rc_pd_list.extend((c, y) for y in r_smi)
         all_graphs.extend(r_g)
     return rc_pd_list, graph_col_fn(all_graphs)
 
@@ -105,7 +104,8 @@ if __name__ == '__main__':
         for entry in tqdm(raw_info):
             info_tup = (
                 entry['new']['mapped_reac_list'],
-                entry['new']['mapped_prod_list']
+                entry['new']['mapped_prod_list'],
+                entry['new']['canonical_rxn']
             )
             all_mapped_rxn.append(info_tup)
 

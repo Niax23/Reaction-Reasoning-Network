@@ -371,15 +371,7 @@ class RichInfoReactionNetwork:
             if smiles not in item2id:
                 item2id[smiles] = ('reaction', len(item2id))
             this_id = item2id[smiles][1]
-            for x in self.get_reaction_substances(smiles, 'reactants'):
-                if x not in item2id:
-                    item2id[x] = ('molecule', len(item2id))
-                that_id = item2id[x][1]
-                edge_index.append((this_id, that_id))
-                edge_index.append((that_id, this_id))
-                edge_types.extend(['reactant'] * 2)
-                edge_infos.extend([(smiles, x)] * 2)
-                reactant_pairs.append((this_id, that_id))
+            all_prod = []
 
             for x in self.get_reaction_substances(smiles, 'products'):
                 if x not in item2id:
@@ -389,6 +381,16 @@ class RichInfoReactionNetwork:
                 edge_index.append((that_id, this_id))
                 edge_types.extend(['product'] * 2)
                 product_pairs.append((this_id, that_id))
+
+            for x in self.get_reaction_substances(smiles, 'reactants'):
+                if x not in item2id:
+                    item2id[x] = ('molecule', len(item2id))
+                that_id = item2id[x][1]
+                edge_index.append((this_id, that_id))
+                edge_index.append((that_id, this_id))
+                edge_types.extend(['reactant'] * 2)
+                edge_infos.extend([(smiles, x)] * 2)
+                reactant_pairs.append((this_id, that_id))
 
         molecules, molecule_ids, rxn_sms, rxn_ids = [], [], [], []
 

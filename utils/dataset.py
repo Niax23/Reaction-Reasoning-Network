@@ -122,15 +122,14 @@ def reaction_graph_colfn_semi(
     mole_embs = np.stack([fmap(fmapper, x) for x in molecules], axis=0)
     mole_embs = torch.from_numpy(mole_embs)
 
-    edge_attrs = [fmap(emapper, x) for x in edge_semi]
+    edge_attrs = np.stack([fmap(emapper, x) for x in edge_semi], axis=0)
     edge_attrs = torch.from_numpy(edge_attrs)
     edge_semi_mask = [x == 'reactant' for x in edge_types]
     full_edge_attr = torch.zeros((len(edge_types), edge_attrs.shape[-1]))
     full_edge_attr[edge_semi_mask] = edge_attrs
 
-    mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
-        edge_types, full_edge_attr, edge_semi_mask, required_ids, \
-        reactant_pairs, product_pairs, n_node
+    return mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, edge_types,\
+        full_edge_attr, required_ids, reactant_pairs, product_pairs, n_node
 
 
 def uspto_condition_colfn_semi(
