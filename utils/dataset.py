@@ -116,7 +116,6 @@ def reaction_graph_colfn_semi(
         G.sample_multiple_subgraph_rxn(reactions, hop, max_neighbors)
 
     edge_index = torch.LongTensor(edge_index).T
-    edge_index = torch.LongTensor(edge_index).T
     product_pairs = torch.LongTensor(product_pairs)
     reactant_pairs = torch.LongTensor(reactant_pairs)
     mole_embs = np.stack([fmap(fmapper, x) for x in molecules], axis=0)

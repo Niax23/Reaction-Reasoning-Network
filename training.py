@@ -282,6 +282,7 @@ def train_uspto_condition_semi(
         sub_mask = generate_square_subsequent_mask(5, device)
         reactant_pairs = reactant_pairs.to(device)
         product_pairs = product_pairs.to(device)
+        edge_attrs = edge_attrs.to(device)
 
         if with_rxn:
             rxn_embs = average_mole_for_rxn(
@@ -325,6 +326,7 @@ def eval_uspto_condition_semi(loader, model, device, with_rxn=False):
         sub_mask = generate_square_subsequent_mask(5, device)
         reactant_pairs = reactant_pairs.to(device)
         product_pairs = product_pairs.to(device)
+        edge_attrs = edge_attrs.to(device)
 
         if with_rxn:
             rxn_embs = average_mole_for_rxn(

@@ -204,14 +204,14 @@ class SemiModel(nn.Module):
             net_dim, heads, dim_feedforward=net_dim << 1,
             batch_first=True, dropout=dropout
         )
-        self.edge_linear = torch.nn.Linear(mol_dim, net_dim)
+        self.edge_linear = torch.nn.Linear(mol_dim + net_dim, net_dim)
         self.out_layer = torch.nn.Sequential(
             torch.nn.Linear(net_dim, net_dim),
             torch.nn.ReLU(),
             torch.nn.Dropout(dropout),
             torch.nn.Linear(net_dim, n_words)
         )
-        self.linear = torch.nn.Linear(mol_dim + net_dim, net_dim)
+        self.linear = torch.nn.Linear(mol_dim, net_dim)
         self.decoder = torch.nn.TransformerEncoder(t_layer, dec_layers)
         if init_rxn:
             self.rxn_linear = torch.nn.Linear(mol_dim * 2, net_dim)
