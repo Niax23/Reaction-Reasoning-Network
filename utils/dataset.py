@@ -110,23 +110,26 @@ def uspto_condition_colfn_rxn(batch, G, hop, mapper, max_neighbors=None):
 def reaction_graph_colfn_semi(
     reactions, G, hop, fmapper, emapper, max_neighbors=None
 ):
-    mol2_strs, molecule_ids, mapped_rxns, rxn_ids, edge_index, edge_types, \
-        edge_semi, required_ids, reactant_pairs, product_pairs, n_node = \
+    molecules, molecule_ids, rxn_sms, rxn_mapped_infos, rxn_ids,  \
+        edge_index, edge_types, edge_semi, required_ids, \
+        reactant_pairs, product_pairs, n_node = \
         G.sample_multiple_subgraph_rxn(reactions, hop, max_neighbors)
 
     edge_index = torch.LongTensor(edge_index).T
     edge_index = torch.LongTensor(edge_index).T
     product_pairs = torch.LongTensor(product_pairs)
     reactant_pairs = torch.LongTensor(reactant_pairs)
-    mole_embs = np.stack([fmap(fmapper, x) for x in mole_strs], axis=0)
+    mole_embs = np.stack([fmap(fmapper, x) for x in molecules], axis=0)
     mole_embs = torch.from_numpy(mole_embs)
 
     edge_attrs = [fmap(emapper, x) for x in edge_semi]
     edge_attrs = torch.from_numpy(edge_attrs)
     edge_semi_mask = [x == 'reactant' for x in edge_types]
+    full_edge_attr = torch.zeros((len(edge_types), edge_attrs.shape[-1]))
+    full_edge_attr[edge_semi_mask] = edge_attrs
 
     mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
-        edge_types, edge_attrs, edge_semi_mask required_ids, \
+        edge_types, full_edge_attr, edge_semi_mask, required_ids, \
         reactant_pairs, product_pairs, n_node
 
 

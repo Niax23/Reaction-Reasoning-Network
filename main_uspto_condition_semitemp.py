@@ -8,7 +8,7 @@ from utils.network import ChemicalReactionNetwork
 from utils.dataset import ConditionDataset, uspto_condition_colfn_react
 
 
-from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding, ReactEmbeddingModel
+from model import GATBase, MyModel, RxnNetworkGNN, PositionalEncoding, SemiModel
 from training import train_uspto_condition_react_emb, eval_uspto_condition_react_emb
 import argparse
 import os

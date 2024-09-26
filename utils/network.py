@@ -388,7 +388,6 @@ class RichInfoReactionNetwork:
                 edge_index.append((this_id, that_id))
                 edge_index.append((that_id, this_id))
                 edge_types.extend(['product'] * 2)
-                edge_infos.extend([(smiles, x)] * 2)
                 product_pairs.append((this_id, that_id))
 
         molecules, molecule_ids, rxn_sms, rxn_ids = [], [], [], []

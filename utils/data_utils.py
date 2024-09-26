@@ -50,7 +50,9 @@ def parse_uspto_condition_data(data_path, verbose=True):
             'label': labels,
             'mapped_rxn': element['new']['mapped_rxn'],
             'reactants': element['new']['reac_list'],
-            'products': element['new']['prod_list']
+            'products': element['new']['prod_list'],
+            'mapped_reac': element['new']['mapped_reac_list'],
+            "mapped_prod": element["new"]['mapped_prod_list']
         }
         all_data[f'{rxn_type}_data'].append(this_line)
 
