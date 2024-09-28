@@ -33,10 +33,13 @@ class GATBase(torch.nn.Module):
             ))
         self.atom_encoder = AtomEncoder(embedding_dim)
         self.bond_encoder = BondEncoder(embedding_dim)
+        self.mask_embedding = torch.nn.Parameter(torch.randn(embedding_dim))
 
     def forward(self, G) -> torch.Tensor:
         node_feats = self.atom_encoder(G.x)
         edge_feats = self.bond_encoder(G.edge_attr)
+        if G.get('pesudo_mask', None) is not None:
+            node_feats[G.pesudo_mask] = self.mask_embedding
         for layer in range(self.num_layers):
             conv_res = self.batch_norms[layer](self.convs[layer](
                 x=node_feats, edge_attr=edge_feats, edge_index=G.edge_index,

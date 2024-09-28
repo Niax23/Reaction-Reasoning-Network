@@ -1,5 +1,6 @@
 import torch
 from utils.graph_utils import smiles2graph
+from utils.chemistry_utils import get_semi_reaction
 import numpy as np
 import torch_geometric
 from numpy import concatenate as npcat
@@ -180,3 +181,33 @@ def uspto_condition_map_final(
     label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
 
     return x_infos + (labels, label_types)
+
+
+def reaction_graph_map_final(reactions, G, hop, max_neighbors=None):
+    molecules, mts, molecule_ids, rxn_sms, rxn_mapped_infos, rxn_ids,  \
+        edge_index, edge_types, edge_semi, required_ids, \
+        reactant_pairs, product_pairs, n_node = \
+        G.sample_multiple_subgraph_rxn(reactions, hop, max_neighbors)
+
+    edge_index = torch.LongTensor(edge_index).T
+    product_pairs = torch.LongTensor(product_pairs)
+    reactant_pairs = torch.LongTensor(reactant_pairs)
+    mole_graphs = [smiles2graph(x, with_amap=False) for x in molecules]
+    mole_graphs = graph_col_fn(mole_graphs)
+
+    semi_graphs, semi_keys = [], []
+    for idx, (a, b) in rxn_mapped_infos:
+        rsm, rgp = get_semi_reaction(a, b, smiles2graph, True)
+        semi_graphs.extend(rgp)
+        semi_keys.extend((rxn_sms[idx], t) for t in rsm)
+
+    smkey2idx = {k: v for v, k in enumerate(semi_keys)}
+    semi_graphs = graph_col_fn(semi_graphs)
+
+    return mole_embs, mts, molecule_ids, rxn_sms, rxn_ids, edge_index, \
+        edge_types, full_edge_attr, required_ids, reactant_pairs, \
+        product_pairs, n_node
+
+
+def uspto_condition_final(batch, G, hop, max_neighbors=None):
+    pass
