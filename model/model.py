@@ -507,13 +507,15 @@ class FullModel(nn.Module):
         return self.out_layer(seq_output)
 
     def forward(
-        self, mole_embs, mts, molecule_ids, rxn_ids, required_ids, edge_index,
-        edge_types, edge_feats, labels, attn_mask, n_nodes, rxn_embs=None,
+        self, mole_graphs, mts, molecule_ids, rxn_ids, required_ids,
+        edge_index, edge_types, semi_graphs, semi_keys, semi_key2idxs,
+        n_nodes, labels, attn_mask, reactant_pairs=None, product_pairs=None,
         key_padding_mask=None, seq_types=None,
     ):
         reaction_embs = self.encode(
-            mole_embs, mts, molecule_ids, rxn_ids, required_ids,
-            edge_index, edge_types, edge_feats, n_nodes, rxn_embs
+            mole_graphs, mts, molecule_ids, rxn_ids, required_ids,
+            edge_index, edge_types, semi_graphs, semi_keys, semi_key2idxs,
+            n_nodes, reactant_pairs, product_pairs
         )
 
         result = self.decode(
