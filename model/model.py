@@ -411,6 +411,8 @@ class FullModel(nn.Module):
         self.gnn2 = gnn2
         self.gnn1 = gnn1
         self.init_rxn = init_rxn
+        self.net_dim = net_dim
+        self.mole_dim = mol_dim
         self.edge_emb = torch.nn.ParameterDict({
             'reactant': torch.nn.Parameter(torch.randn(net_dim)),
             'product': torch.nn.Parameter(torch.randn(net_dim)),
@@ -449,7 +451,7 @@ class FullModel(nn.Module):
 
     def encode(
         self, mole_graphs, mts, molecule_ids, rxn_ids, required_ids,
-        edge_index, edge_types, semi_graphs, semi_keys, semi_key2embs,
+        edge_index, edge_types, semi_graphs, semi_keys, semi_key2idxs,
         n_nodes, reactant_pairs=None, product_pairs=None
     ):
         x_keys = torch.stack([self.node_type[x] for x in mts], dim=0)
@@ -480,8 +482,12 @@ class FullModel(nn.Module):
             query=semi_qry, key=semi_b_embs, value=semi_b_embs,
             key_padding_mask=torch.logical_not(mole_graphs.batch_mask)
         )
-
-        edge_feats = torch.cat([edge_tf, semi_feats.squeeze(dim=1)], dim=-1)
+        semi_feats = semi_feats.squeeze(dim=1)
+        semi_edges = [semi_feats[semi_key2idxs[t]] for t in semi_keys]
+        semi_egx = torch.zeros((edge_tf.shape[0], self.mole_dim)).to(edge_tf)
+        semi_rec_mask = [x == 'reactant' for x in edge_types]
+        semi_egx[semi_rec_mask] = torch.stack(semi_edges, dim=0)
+        edge_feats = torch.cat([semi_egx, edge_tf], dim=-1)
         net_x, _ = self.gnn2(x_feat, self.edge_linear(edge_feats), edge_index)
         return net_x[required_ids]
 
