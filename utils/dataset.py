@@ -208,7 +208,7 @@ def reaction_graph_final(reactions, G, hop, max_neighbors=None):
     semi_graphs = graph_col_fn(semi_graphs)
 
     return mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
-        edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+        edge_types, semi_graphs, edge_semi, smkey2idx, required_ids,\
         reactant_pairs, product_pairs, n_node
 
 

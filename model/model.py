@@ -442,7 +442,6 @@ class FullModel(nn.Module):
             self.rxn_linear = torch.nn.Linear(mol_dim * 2, net_dim)
         else:
             self.reaction_init = torch.nn.Parameter(torch.randn(net_dim))
-        self.net_dim = net_dim
         self.word_emb = torch.nn.Embedding(n_words, net_dim)
         self.with_type = with_type
         if self.with_type:
@@ -455,8 +454,8 @@ class FullModel(nn.Module):
         n_nodes, reactant_pairs=None, product_pairs=None
     ):
         x_keys = torch.stack([self.node_type[x] for x in mts], dim=0)
-        x_keys = x_feat.unsqueeze(dim=1)
-        mole_feats = self.gnn1(mole_graphs)
+        x_keys = x_keys.unsqueeze(dim=1)
+        mole_feats, _ = self.gnn1(mole_graphs)
         mole_feats = graph2batch(mole_feats, mole_graphs.batch_mask)
 
         mole_embs, _ = self.pooler(
@@ -464,6 +463,7 @@ class FullModel(nn.Module):
             key_padding_mask=torch.logical_not(mole_graphs.batch_mask)
         )
 
+        x_feat = torch.zeros((n_nodes, self.net_dim)).to(mole_embs)
         x_feat[molecule_ids] = mole_embs.squeeze(dim=1)
         if self.init_rxn:
             assert reactant_pairs is not None and product_pairs is not None,\
@@ -475,12 +475,12 @@ class FullModel(nn.Module):
         else:
             x_feat[rxn_ids] = self.reaction_init
         edge_tf = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
-        semi_n_embs = self.gnn1(semi_graphs)
+        semi_n_embs, _ = self.gnn1(semi_graphs)
         semi_b_embs = graph2batch(semi_n_embs, semi_graphs.batch_mask)
         semi_qry = self.semi_init.repeat(semi_b_embs.shape[0], 1, 1)
         semi_feats, _ = self.pooler(
             query=semi_qry, key=semi_b_embs, value=semi_b_embs,
-            key_padding_mask=torch.logical_not(mole_graphs.batch_mask)
+            key_padding_mask=torch.logical_not(semi_graphs.batch_mask)
         )
         semi_feats = semi_feats.squeeze(dim=1)
         semi_edges = [semi_feats[semi_key2idxs[t]] for t in semi_keys]

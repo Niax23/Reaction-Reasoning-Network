@@ -183,3 +183,107 @@ def ddp_eval_uspto_condition(loader, model, device, verbose=False):
         iterx.set_postfix_str(man.summary_all(split_string=','))
 
     return man
+
+
+def ddp_train_uspto_condition_full(
+    loader, model, optimizer, device, warmup=False, verbose=False
+):
+    model = model.train()
+    loss_cur = MetricCollector('loss', type_fmt=':.3f')
+    manager = MetricManager([loss_cur])
+    if warmup:
+        warmup_iters = len(loader) - 1
+        warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
+
+    iterx = tqdm(loader) if verbose else loader
+
+    for data in iterx:
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            reactant_pairs, product_pairs, n_node, labels, label_types = data
+
+        mole_graphs = mole_graphs.to(device, non_blocking=True)
+        edge_index = edge_index.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
+        label_types = label_types.to(device, non_blocking=True)
+        sub_mask = generate_square_subsequent_mask(5, 'cpu')
+        sub_mask = sub_mask.to(device, non_blocking=True)
+        reactant_pairs = reactant_pairs.to(device, non_blocking=True)
+        product_pairs = product_pairs.to(device, non_blocking=True)
+        semi_graphs = semi_graphs.to(device, non_blocking=True)
+
+        res = model(
+            mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+            rxn_ids=rxn_ids, required_ids=required_ids, edge_index=edge_index,
+            edge_types=edge_types, semi_graphs=semi_graphs,
+            semi_keys=semi_keys, semi_key2idxs=smkey2idx, n_nodes=n_node,
+            labels=labels[:, :-1], attn_mask=sub_mask,
+            reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+            key_padding_mask=None, seq_types=label_types,
+        )
+
+        loss = calc_trans_loss(res, labels, -1000)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        loss_cur.update(loss.item())
+        if warmup:
+            warmup_sher.step()
+
+        if verbose:
+            iterx.set_postfix_str(manager.summary_all())
+
+    return manager
+
+
+def ddp_eval_uspto_condition_full(loader, model, device, verbose=False):
+    model = model.eval()
+    cat_acc = MetricCollector('catalyst', type_fmt=':.2f')
+    sov1_acc = MetricCollector('solvent1', type_fmt=":.2f")
+    sov2_acc = MetricCollector('solvent2', type_fmt=':.2f')
+    reg1_acc = MetricCollector('reagent1', type_fmt=':.2f')
+    reg2_acc = MetricCollector('reagent2', type_fmt=':.2f')
+    ov = MetricCollector('overall', type_fmt=':.2f')
+    man = MetricManager([cat_acc, sov1_acc, sov2_acc, reg1_acc, reg2_acc, ov])
+    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
+
+    iterx = tqdm(loader) if verbose else loader
+    for data in tqdm(loader):
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            reactant_pairs, product_pairs, n_node, labels, label_types = data
+
+        mole_graphs = mole_graphs.to(device, non_blocking=True)
+        edge_index = edge_index.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
+        label_types = label_types.to(device, non_blocking=True)
+        sub_mask = generate_square_subsequent_mask(5, 'cpu')
+        sub_mask = sub_mask.to(device, non_blocking=True)
+        reactant_pairs = reactant_pairs.to(device, non_blocking=True)
+        product_pairs = product_pairs.to(device, non_blocking=True)
+        semi_graphs = semi_graphs.to(device, non_blocking=True)
+
+        with torch.no_grad():
+            res = model(
+                mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+                rxn_ids=rxn_ids, required_ids=required_ids,
+                edge_index=edge_index, edge_types=edge_types,
+                semi_graphs=semi_graphs, semi_keys=semi_keys,
+                semi_key2idxs=smkey2idx, n_nodes=n_node,
+                labels=labels[:, :-1], attn_mask=sub_mask,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+                key_padding_mask=None, seq_types=label_types,
+            )
+            result = convert_log_into_label(res, mod='softmax')
+
+    ovr = None
+    for idx, k in enumerate(keys):
+        pt = result[:, idx] == labels[:, idx]
+        A, B = pt.sum().item(), pt.shape[0]
+        man.metrics[idx].update(val=A, num=B)
+        ovr = pt if ovr is None else (ovr & pt)
+    ov.update(ovr.sum().item(), ovr.shape[0])
+    if verbose:
+        iterx.set_postfix_str(man.summary_all(split_string=','))
+
+    return man
