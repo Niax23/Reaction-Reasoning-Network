@@ -196,8 +196,11 @@ def reaction_graph_final(reactions, G, hop, max_neighbors=None):
     mole_graphs = graph_col_fn(mole_graphs)
 
     semi_graphs, semi_keys = [], []
-    for idx, (a, b) in rxn_mapped_infos:
-        rsm, rgp = get_semi_reaction(a, b, smiles2graph, True)
+    for idx, (a, b) in enumerate(rxn_mapped_infos):
+        rsm, rgp = get_semi_reaction(
+            mapped_reac_list=a, mapped_prod_list=b, add_pesudo_node=True,
+            trans_fn=lambda x: smiles2graph(x, with_amap=True)
+        )
         semi_graphs.extend(rgp)
         semi_keys.extend((rxn_sms[idx], t) for t in rsm)
 

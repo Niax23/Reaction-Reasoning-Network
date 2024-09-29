@@ -419,7 +419,7 @@ class FullModel(nn.Module):
         })
         self.semi_init = torch.nn.Parameter(torch.randn(1, 1, net_dim))
         self.pooler = torch.nn.MultiheadAttention(
-            embed_dim=net_dim, kdim=molecule_dim, vdim=molecule_dim,
+            embed_dim=net_dim, kdim=mol_dim, vdim=mol_dim,
             num_heads=heads, batch_first=True, dropout=dropout
         )
         self.node_type = torch.nn.ParameterDict({

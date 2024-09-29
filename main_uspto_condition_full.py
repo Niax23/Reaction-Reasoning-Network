@@ -31,6 +31,11 @@ def make_dir(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Parser for main experiment')
     # model definition
+    
+    parser.add_argument(
+        '--mole_layer', default=5, type=int, 
+        help='the number of layer for mole gnn'
+    )
     parser.add_argument(
         '--dim', type=int, default=300,
         help='the num of dim for the model'
@@ -196,7 +201,7 @@ if __name__ == '__main__':
 
     pos_env = PositionalEncoding(args.dim, args.dropout, maxlen=128)
 
-    model = SepSemiModel(
+    model = FullModel(
         gnn1=mol_gnn, gnn2=net_gnn, PE=pos_env, net_dim=args.dim,
         heads=args.heads, dropout=args.dropout, dec_layers=args.decoder_layer,
         n_words=len(label_mapper), mol_dim=args.dim,
