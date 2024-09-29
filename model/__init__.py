@@ -1,8 +1,9 @@
 from .backbones import GATBase, RxnNetworkGNN
-from .model import MyModel, PositionalEncoding, PretrainedModel, SemiModel, SepSemiModel
-
+from .model import (
+    MyModel, PositionalEncoding, PretrainedModel, SemiModel, SepSemiModel,
+)
 
 __all__ = [
     'MyModel', 'GATBase', 'RxnNetworkGNN', "SepSemiModel",
-    'PositionalEncoding', 'PretrainedModel', 'SemiModel'
+    'PositionalEncoding', 'PretrainedModel', 'SemiModel',
 ]

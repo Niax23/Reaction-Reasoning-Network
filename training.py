@@ -9,6 +9,49 @@ from utils.data_utils import (
 )
 
 
+def average_mole_for_rxn(
+    mole_embs, n_nodes, mole_ids, rxn_ids, reactant_pairs, product_pairs
+):
+    x_temp = torch.zeros([n_nodes, mole_embs.shape[-1]]).to(mole_embs)
+    x_temp[mole_ids] = mole_embs
+    device = mole_embs.device
+    rxn_reac_embs = torch.zeros_like(x_temp)
+    rxn_prod_embs = torch.zeros_like(x_temp)
+    rxn_reac_cnt = torch.zeros(n_nodes).to(device)
+    rxn_prod_cnt = torch.zeros(n_nodes).to(device)
+
+    rxn_reac_embs.index_add_(
+        index=reactant_pairs[:, 0], dim=0,
+        source=x_temp[reactant_pairs[:, 1]]
+    )
+    rxn_prod_embs.index_add_(
+        index=product_pairs[:, 0], dim=0,
+        source=x_temp[product_pairs[:, 1]]
+    )
+
+    rxn_prod_cnt.index_add_(
+        index=product_pairs[:, 0], dim=0,
+        source=torch.ones(product_pairs.shape[0]).to(device)
+    )
+
+    rxn_reac_cnt.index_add_(
+        index=reactant_pairs[:, 0], dim=0,
+        source=torch.ones(reactant_pairs.shape[0]).to(device)
+    )
+
+    assert torch.all(rxn_reac_cnt[rxn_ids] > 0).item(), \
+        "Some rxn Missing reactant embeddings"
+    assert torch.all(rxn_prod_cnt[rxn_ids] > 0).item(), \
+        "Some rxn missing product embeddings"
+
+    rxn_reac_embs = rxn_reac_embs[rxn_ids] / \
+        rxn_reac_cnt[rxn_ids].unsqueeze(-1)
+    rxn_prod_embs = rxn_prod_embs[rxn_ids] / \
+        rxn_prod_cnt[rxn_ids].unsqueeze(-1)
+    rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
+    return rxn_embs
+
+
 def warmup_lr_scheduler(optimizer, warmup_iters, warmup_factor):
     def f(x):
         if x >= warmup_iters:
@@ -113,49 +156,6 @@ def eval_uspto_condition(loader, model, device):
     results['overall'] = overall
     results = {k: v.float().mean().item() for k, v in results.items()}
     return results
-
-
-def average_mole_for_rxn(
-    mole_embs, n_nodes, mole_ids, rxn_ids, reactant_pairs, product_pairs
-):
-    x_temp = torch.zeros([n_nodes, mole_embs.shape[-1]]).to(mole_embs)
-    x_temp[mole_ids] = mole_embs
-    device = mole_embs.device
-    rxn_reac_embs = torch.zeros_like(x_temp)
-    rxn_prod_embs = torch.zeros_like(x_temp)
-    rxn_reac_cnt = torch.zeros(n_nodes).to(device)
-    rxn_prod_cnt = torch.zeros(n_nodes).to(device)
-
-    rxn_reac_embs.index_add_(
-        index=reactant_pairs[:, 0], dim=0,
-        source=x_temp[reactant_pairs[:, 1]]
-    )
-    rxn_prod_embs.index_add_(
-        index=product_pairs[:, 0], dim=0,
-        source=x_temp[product_pairs[:, 1]]
-    )
-
-    rxn_prod_cnt.index_add_(
-        index=product_pairs[:, 0], dim=0,
-        source=torch.ones(product_pairs.shape[0]).to(device)
-    )
-
-    rxn_reac_cnt.index_add_(
-        index=reactant_pairs[:, 0], dim=0,
-        source=torch.ones(reactant_pairs.shape[0]).to(device)
-    )
-
-    assert torch.all(rxn_reac_cnt[rxn_ids] > 0).item(), \
-        "Some rxn Missing reactant embeddings"
-    assert torch.all(rxn_prod_cnt[rxn_ids] > 0).item(), \
-        "Some rxn missing product embeddings"
-
-    rxn_reac_embs = rxn_reac_embs[rxn_ids] / \
-        rxn_reac_cnt[rxn_ids].unsqueeze(-1)
-    rxn_prod_embs = rxn_prod_embs[rxn_ids] / \
-        rxn_prod_cnt[rxn_ids].unsqueeze(-1)
-    rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
-    return rxn_embs
 
 
 def train_uspto_condition_rxn(

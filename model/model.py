@@ -399,3 +399,159 @@ class PositionalEncoding(torch.nn.Module):
     def forward(self, token_embedding: torch.Tensor):
         token_len = token_embedding.shape[1]
         return self.dropout(token_embedding + self.pos_embedding[:token_len])
+
+
+class FullModel(nn.Module):
+    def __init__(
+        self, gnn1, gnn2, PE, net_dim, heads, dropout, dec_layers,
+        n_words, mol_dim, with_type=False, ntypes=None, init_rxn=False
+    ):
+        super(FullModel, self).__init__()
+        self.pos_enc = PE
+        self.gnn2 = gnn2
+        self.gnn1 = gnn1
+        self.init_rxn = init_rxn
+        self.edge_emb = torch.nn.ParameterDict({
+            'reactant': torch.nn.Parameter(torch.randn(net_dim)),
+            'product': torch.nn.Parameter(torch.randn(net_dim)),
+        })
+        self.semi_init = torch.nn.Parameter(torch.randn(1, 1, net_dim))
+        self.pooler = torch.nn.MultiheadAttention(
+            embed_dim=net_dim, kdim=molecule_dim, vdim=molecule_dim,
+            num_heads=heads, batch_first=True, dropout=dropout
+        )
+        self.node_type = torch.nn.ParameterDict({
+            'reactant': torch.nn.Parameter(torch.randn(net_dim)),
+            'product': torch.nn.Parameter(torch.randn(net_dim))
+        })
+        t_layer = torch.nn.TransformerEncoderLayer(
+            net_dim, heads, dim_feedforward=net_dim << 1,
+            batch_first=True, dropout=dropout
+        )
+        self.edge_linear = torch.nn.Linear(mol_dim + net_dim, net_dim)
+        self.out_layer = torch.nn.Sequential(
+            torch.nn.Linear(net_dim, net_dim),
+            torch.nn.ReLU(),
+            torch.nn.Dropout(dropout),
+            torch.nn.Linear(net_dim, n_words)
+        )
+        self.decoder = torch.nn.TransformerEncoder(t_layer, dec_layers)
+        if init_rxn:
+            self.rxn_linear = torch.nn.Linear(mol_dim * 2, net_dim)
+        else:
+            self.reaction_init = torch.nn.Parameter(torch.randn(net_dim))
+        self.net_dim = net_dim
+        self.word_emb = torch.nn.Embedding(n_words, net_dim)
+        self.with_type = with_type
+        if self.with_type:
+            assert ntypes is not None, "require type numbers"
+            self.type_embs = torch.nn.Embedding(ntypes, net_dim)
+
+    def encode(
+        self, mole_graphs, mts, molecule_ids, rxn_ids, required_ids,
+        edge_index, edge_types, semi_graphs, semi_keys, semi_key2embs,
+        n_nodes, reactant_pairs=None, product_pairs=None
+    ):
+        x_keys = torch.stack([self.node_type[x] for x in mts], dim=0)
+        x_keys = x_feat.unsqueeze(dim=1)
+        mole_feats = self.gnn1(mole_graphs)
+        mole_feats = graph2batch(mole_feats, mole_graphs.batch_mask)
+
+        mole_embs, _ = self.pooler(
+            query=x_keys, key=mole_feats, value=mole_feats,
+            key_padding_mask=torch.logical_not(mole_graphs.batch_mask)
+        )
+
+        x_feat[molecule_ids] = mole_embs.squeeze(dim=1)
+        if self.init_rxn:
+            assert reactant_pairs is not None and product_pairs is not None,\
+                "Require reaction comp mapper for rxns embedding generation"
+            rxn_embs = average_mole_for_rxn(
+                x_feat, n_nodes, rxn_ids, reactant_pairs, product_pairs
+            )
+            x_feat[rxn_ids] = self.rxn_linear(rxn_embs)
+        else:
+            x_feat[rxn_ids] = self.reaction_init
+        edge_tf = torch.stack([self.edge_emb[x] for x in edge_types], dim=0)
+        semi_n_embs = self.gnn1(semi_graphs)
+        semi_b_embs = graph2batch(semi_n_embs, semi_graphs.batch_mask)
+        semi_qry = self.semi_init.repeat(semi_b_embs.shape[0], 1, 1)
+        semi_feats, _ = self.pooler(
+            query=semi_qry, key=semi_b_embs, value=semi_b_embs,
+            key_padding_mask=torch.logical_not(mole_graphs.batch_mask)
+        )
+
+        edge_feats = torch.cat([edge_tf, semi_feats.squeeze(dim=1)], dim=-1)
+        net_x, _ = self.gnn2(x_feat, self.edge_linear(edge_feats), edge_index)
+        return net_x[required_ids]
+
+    def decode(
+        self, memory, labels, attn_mask, key_padding_mask=None, seq_types=None
+    ):
+        x_input = self.word_emb(labels)
+        if self.with_type:
+            assert seq_types is not None, "Require type inputs"
+            x_input += self.type_embs(seq_types)
+        seq_input = torch.cat([memory.unsqueeze(dim=1), x_input], dim=1)
+        seq_output = self.decoder(
+            src=self.pos_enc(seq_input), mask=attn_mask,
+            src_key_padding_mask=key_padding_mask
+        )
+
+        return self.out_layer(seq_output)
+
+    def forward(
+        self, mole_embs, mts, molecule_ids, rxn_ids, required_ids, edge_index,
+        edge_types, edge_feats, labels, attn_mask, n_nodes, rxn_embs=None,
+        key_padding_mask=None, seq_types=None,
+    ):
+        reaction_embs = self.encode(
+            mole_embs, mts, molecule_ids, rxn_ids, required_ids,
+            edge_index, edge_types, edge_feats, n_nodes, rxn_embs
+        )
+
+        result = self.decode(
+            reaction_embs, labels, attn_mask,
+            key_padding_mask=key_padding_mask, seq_types=seq_types
+        )
+        return result
+
+
+def average_mole_for_rxn(
+    mole_embs, n_nodes, rxn_ids, reactant_pairs, product_pairs
+):
+    rxn_reac_embs = torch.zeros_like(mole_embs)
+    rxn_prod_embs = torch.zeros_like(mole_embs)
+    rxn_reac_cnt = torch.zeros(n_nodes).to(mole_embs)
+    rxn_prod_cnt = torch.zeros(n_nodes).to(mole_embs)
+
+    rxn_reac_embs.index_add_(
+        index=reactant_pairs[:, 0], dim=0,
+        source=mole_embs[reactant_pairs[:, 1]]
+    )
+    rxn_prod_embs.index_add_(
+        index=product_pairs[:, 0], dim=0,
+        source=mole_embs[product_pairs[:, 1]]
+    )
+
+    rxn_prod_cnt.index_add_(
+        index=product_pairs[:, 0], dim=0,
+        source=torch.ones(product_pairs.shape[0]).to(mole_embs)
+    )
+
+    rxn_reac_cnt.index_add_(
+        index=reactant_pairs[:, 0], dim=0,
+        source=torch.ones(reactant_pairs.shape[0]).to(mole_embs)
+    )
+
+    assert torch.all(rxn_reac_cnt[rxn_ids] > 0).item(), \
+        "Some rxn Missing reactant embeddings"
+    assert torch.all(rxn_prod_cnt[rxn_ids] > 0).item(), \
+        "Some rxn missing product embeddings"
+
+    rxn_reac_embs = rxn_reac_embs[rxn_ids] / \
+        rxn_reac_cnt[rxn_ids].unsqueeze(-1)
+    rxn_prod_embs = rxn_prod_embs[rxn_ids] / \
+        rxn_prod_cnt[rxn_ids].unsqueeze(-1)
+    rxn_embs = torch.cat([rxn_reac_embs, rxn_prod_embs], dim=-1)
+    return rxn_embs
