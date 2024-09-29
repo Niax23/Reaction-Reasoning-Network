@@ -475,7 +475,7 @@ def eval_uspto_condition_sep(loader, model, device, with_rxn=False):
 
 
 def train_uspto_condition_full(
-    loader, model, optimizer, device, with_rxn=False, warmup=False
+    loader, model, optimizer, device, warmup=False
 ):
     model, los_cur = model.train(), []
     if warmup:
@@ -517,7 +517,7 @@ def train_uspto_condition_full(
     return np.mean(los_cur)
 
 
-def eval_uspto_condition_full(loader, model, device, with_rxn=False):
+def eval_uspto_condition_full(loader, model, device):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
