@@ -8,8 +8,10 @@ import torch
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ExponentialLR
 
-from utils.data_utils import fix_seed, parse_uspto_condition_data
-from utils.data_utils import check_early_stop
+from utils.data_utils import (
+    fix_seed, parse_uspto_condition_mapper,
+    parse_uspto_condition_raw, check_early_stop
+)
 from utils.sep_network import SepNetwork
 from utils.dataset import ConditionDataset, uspto_condition_final
 
@@ -45,7 +47,7 @@ def make_dir(args):
     return log_dir, model_dir, token_dir
 
 
-def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
+def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
     print(f'[INFO] Process {worker_idx} start')
     torch_dist.init_process_group(
         backend='nccl', init_method=f'tcp://127.0.0.1:{args.port}',
@@ -54,6 +56,11 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
 
     device = torch.device(f'cuda:{worker_idx}')
     verbose = (worker_idx == 0)
+
+    with open(args.data_path) as Fin:
+        raw_info = json.load(Fin)
+
+    all_data = parse_uspto_condition_raw(raw_info, label_mapper, verbose)
 
     all_net = SepNetwork(
         all_data['train_data'] + all_data['val_data'] + all_data['test_data']
@@ -64,6 +71,8 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
 
     trainG = FullColGraph(train_net, args.reaction_hop, args.max_neighbors)
     valG = FullColGraph(all_net, args.reaction_hop, args.max_neighbors)
+
+    print(f'[INFO] Process {worker_idx} network build')
 
     train_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['train_data']],
@@ -129,6 +138,8 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma, verbose=verbose)
+
+    print(f'[INFO] Process {worker_idx} model built')
 
     log_info = {
         'args': args.__dict__, 'train_loss': [],
@@ -314,12 +325,15 @@ if __name__ == '__main__':
 
     log_dir, model_dir, token_dir = make_dir(args)
 
-    all_data, label_mapper = parse_uspto_condition_data(args.data_path)
+    with open(args.data_path) as Fin:
+        raw_info = json.load(Fin)
+
+    label_mapper = parse_uspto_condition_mapper(raw_info, True)
 
     with open(token_dir, 'wb') as Fout:
         pickle.dump(label_mapper, Fout)
 
     torch_mp.spawn(
         main_worker, nprocs=args.num_gpus,
-        args=(args, log_dir, model_dir, all_data, label_mapper)
+        args=(args, log_dir, model_dir, label_mapper)
     )

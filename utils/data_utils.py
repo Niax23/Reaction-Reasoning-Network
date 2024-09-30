@@ -13,9 +13,7 @@ def clk_x(x):
     return x if x == '' else canonical_smiles(x)
 
 
-def parse_uspto_condition_data(data_path, verbose=True):
-    with open(data_path) as Fin:
-        raw_info = json.load(Fin)
+def parse_uspto_condition_mapper(raw_info, verbose=True):
     all_x = set()
     iterx = tqdm(raw_info) if verbose else raw_info
     for i, element in enumerate(iterx):
@@ -30,10 +28,12 @@ def parse_uspto_condition_data(data_path, verbose=True):
         all_x.add(reg1)
         all_x.add(reg2)
 
-    all_data = {'train_data': [], 'val_data': [], 'test_data': []}
     name2idx = {k: idx for idx, k in enumerate(all_x)}
-    cls_idx = len(name2idx)
+    return name2idx
 
+
+def parse_uspto_condition_raw(raw_info, name2idx, verbose=True):
+    all_data = {'train_data': [], 'val_data': [], 'test_data': []}
     iterx = tqdm(raw_info) if verbose else raw_info
     for i, element in enumerate(iterx):
         rxn_type = element['dataset']
@@ -55,6 +55,14 @@ def parse_uspto_condition_data(data_path, verbose=True):
             "mapped_prod": element["new"]['mapped_prod_list']
         }
         all_data[f'{rxn_type}_data'].append(this_line)
+    return all_data
+
+
+def parse_uspto_condition_data(data_path, verbose=True):
+    with open(data_path) as Fin:
+        raw_info = json.load(Fin)
+    name2idx = parse_uspto_condition_mapper(raw_info, verbose)
+    all_data = parse_uspto_condition_raw(raw_info, name2idx, verbose)
 
     return all_data, name2idx
 
