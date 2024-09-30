@@ -249,7 +249,7 @@ def ddp_eval_uspto_condition_full(loader, model, device, verbose=False):
     keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
 
     iterx = tqdm(loader) if verbose else loader
-    for data in tqdm(loader):
+    for data in iterx:
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
             edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
             reactant_pairs, product_pairs, n_node, labels, label_types = data
