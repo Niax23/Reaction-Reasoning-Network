@@ -26,6 +26,15 @@ import torch.multiprocessing as torch_mp
 from torch.utils.data.distributed import DistributedSampler
 
 
+class FullG:
+    def __init__(self, G, hop, max_neighbors=None):
+        self.G, self.hop = G, hop
+        self.max_neighbors = max_neighbors
+
+    def get_x(self, x):
+        return uspto_condition_colfn(x, self.G, self.hop, self.max_neighbors)
+
+
 def make_dir(args):
     timestamp = time.time()
     detail_dir = os.path.join(args.base_log, f'{timestamp}')
@@ -54,6 +63,9 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
     train_net = all_net if args.transductive else\
         ChemicalReactionNetwork(all_data['train_data'])
 
+    trainG = FullG(train_net, args.reaction_hop, args.max_neighbors)
+    valG = FullG(all_net, args.reaction_hop, args.max_neighbors)
+
     train_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['train_data']],
         labels=[x['label'] for x in all_data['train_data']]
@@ -75,23 +87,20 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
 
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, train_net, args.reaction_hop, args.max_neighbors
-        ), pin_memory=True, sampler=train_sampler
+        shuffle=False, collate_fn=trainG.get_x,
+        pin_memory=True, sampler=train_sampler
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, all_net, args.reaction_hop, args.max_neighbors
-        ), pin_memory=True, sampler=val_sampler
+        shuffle=False, collate_fn=valG.get_x,
+        pin_memory=True, sampler=val_sampler
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_colfn(
-            x, all_net, args.reaction_hop, args.max_neighbors
-        ), pin_memory=True, sampler=test_sampler
+        shuffle=False, collate_fn=valG.get_x,
+        pin_memory=True, sampler=test_sampler
     )
 
     mol_gnn = GATBase(
