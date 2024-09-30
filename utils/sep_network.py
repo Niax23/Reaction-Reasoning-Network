@@ -1,4 +1,5 @@
 import random
+from utils.dataset import uspto_condition_final
 
 
 def add_to_dict_list(D, key, value):
@@ -122,3 +123,5 @@ class SepNetwork:
         return f"ReactionNetwork with {len(self.adj_infos['reactant'])}"\
             + f" reactants, {len(self.adj_infos['product'])} products" \
             + f" and {len(self.reaction_adj_list)} reactions"
+
+

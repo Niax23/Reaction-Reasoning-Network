@@ -24,6 +24,16 @@ import torch.multiprocessing as torch_mp
 from torch.utils.data.distributed import DistributedSampler
 
 
+class FullColGraph:
+    def __init__(self, G, hop, max_neighbors=None):
+        self.G = G
+        self.hop = hop
+        self.max_neighbors = max_neighbors
+
+    def fwd(self, x):
+        return uspto_condition_final(x, self.G, self.hop, self.max_neighbors)
+
+
 def make_dir(args):
     timestamp = time.time()
     detail_dir = os.path.join(args.base_log, f'{timestamp}')
@@ -52,6 +62,9 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
     train_net = all_net if args.transductive else\
         SepNetwork(all_data['train_data'])
 
+    trainG = FullColGraph(train_net, args.reaction_hop, args.max_neighbors)
+    valG = FullColGraph(all_net, args.reaction_hop, args.max_neighbors)
+
     train_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data['train_data']],
         labels=[x['label'] for x in all_data['train_data']]
@@ -73,23 +86,20 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
 
     train_loader = DataLoader(
         train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_final(
-            x, train_net, args.reaction_hop, args.max_neighbors
-        ), pin_memory=True, sampler=train_sampler
+        shuffle=False, collate_fn=trainG.fwd, pin_memory=True,
+        sampler=train_sampler
     )
 
     val_loader = DataLoader(
         val_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_final(
-            x, all_net, args.reaction_hop, args.max_neighbors
-        ), pin_memory=True, sampler=val_sampler
+        shuffle=False, collate_fn=valG.fwd, pin_memory=True,
+        sampler=val_sampler
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: uspto_condition_final(
-            x, all_net, args.reaction_hop, args.max_neighbors
-        ), pin_memory=True, sampler=test_sampler
+        shuffle=False, collate_fn=valG.fwd, pin_memory=True,
+        sampler=test_sampler
     )
 
     mol_gnn = GATBase(
@@ -118,7 +128,7 @@ def main_worker(worker_idx, args, log_dir, model_dir, all_data, label_mapper):
     )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma, verbose=True)
+    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma, verbose=verbose)
 
     log_info = {
         'args': args.__dict__, 'train_loss': [],
@@ -251,10 +261,6 @@ if __name__ == '__main__':
         '--base_log', type=str, default='log_pretrain',
         help='the path for contraining log'
     )
-    parser.add_argument(
-        '--num_workers', type=int, default=8,
-        help='the number of worker for dataloader'
-    )
 
     parser.add_argument(
         '--warmup', type=int, default=0,
@@ -267,6 +273,11 @@ if __name__ == '__main__':
     parser.add_argument(
         '--seed', type=int, default=2023,
         help='the random seed for training'
+    )
+
+    parser.add_argument(
+        '--num_workers', type=int, default=4,
+        help='the number of workers for training'
     )
 
     # data config

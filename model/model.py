@@ -483,6 +483,10 @@ class FullModel(nn.Module):
             key_padding_mask=torch.logical_not(semi_graphs.batch_mask)
         )
         semi_feats = semi_feats.squeeze(dim=1)
+
+        # print('[model]', semi_keys[0])
+        # print('[model]', any(type(x) == list for x in semi_keys))
+        
         semi_edges = [semi_feats[semi_key2idxs[t]] for t in semi_keys]
         semi_egx = torch.zeros((edge_tf.shape[0], self.mole_dim)).to(edge_tf)
         semi_rec_mask = [x == 'reactant' for x in edge_types]

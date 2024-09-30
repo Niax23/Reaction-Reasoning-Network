@@ -211,6 +211,7 @@ def ddp_train_uspto_condition_full(
         reactant_pairs = reactant_pairs.to(device, non_blocking=True)
         product_pairs = product_pairs.to(device, non_blocking=True)
         semi_graphs = semi_graphs.to(device, non_blocking=True)
+        semi_keys = [tuple(x) for x in semi_keys]
 
         res = model(
             mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
@@ -262,6 +263,7 @@ def ddp_eval_uspto_condition_full(loader, model, device, verbose=False):
         reactant_pairs = reactant_pairs.to(device, non_blocking=True)
         product_pairs = product_pairs.to(device, non_blocking=True)
         semi_graphs = semi_graphs.to(device, non_blocking=True)
+        semi_keys = [tuple(x) for x in semi_keys]
 
         with torch.no_grad():
             res = model(
