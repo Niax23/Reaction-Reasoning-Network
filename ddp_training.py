@@ -148,7 +148,7 @@ def ddp_eval_uspto_condition(loader, model, device, verbose=False):
     keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
 
     iterx = tqdm(loader) if verbose else loader
-    for data in tqdm(loader):
+    for data in iterx:
         mol_graphs, edge_index, edge_types, mol_mask, reaction_mask, \
             req_ids, labels, label_types = data
 
@@ -172,15 +172,15 @@ def ddp_eval_uspto_condition(loader, model, device, verbose=False):
             )
             result = convert_log_into_label(res, mod='softmax')
 
-    ovr = None
-    for idx, k in enumerate(keys):
-        pt = result[:, idx] == labels[:, idx]
-        A, B = pt.sum().item(), pt.shape[0]
-        man.metrics[idx].update(val=A, num=B)
-        ovr = pt if ovr is None else (ovr & pt)
-    ov.update(ovr.sum().item(), ovr.shape[0])
-    if verbose:
-        iterx.set_postfix_str(man.summary_all(split_string=','))
+        ovr = None
+        for idx, k in enumerate(keys):
+            pt = result[:, idx] == labels[:, idx]
+            A, B = pt.sum().item(), pt.shape[0]
+            man.metrics[idx].update(val=A, num=B)
+            ovr = pt if ovr is None else (ovr & pt)
+        ov.update(ovr.sum().item(), ovr.shape[0])
+        if verbose:
+            iterx.set_postfix_str(man.summary_all(split_string=','))
 
     return man
 
@@ -278,14 +278,14 @@ def ddp_eval_uspto_condition_full(loader, model, device, verbose=False):
             )
             result = convert_log_into_label(res, mod='softmax')
 
-    ovr = None
-    for idx, k in enumerate(keys):
-        pt = result[:, idx] == labels[:, idx]
-        A, B = pt.sum().item(), pt.shape[0]
-        man.metrics[idx].update(val=A, num=B)
-        ovr = pt if ovr is None else (ovr & pt)
-    ov.update(ovr.sum().item(), ovr.shape[0])
-    if verbose:
-        iterx.set_postfix_str(man.summary_all(split_string=','))
+        ovr = None
+        for idx, k in enumerate(keys):
+            pt = result[:, idx] == labels[:, idx]
+            A, B = pt.sum().item(), pt.shape[0]
+            man.metrics[idx].update(val=A, num=B)
+            ovr = pt if ovr is None else (ovr & pt)
+        ov.update(ovr.sum().item(), ovr.shape[0])
+        if verbose:
+            iterx.set_postfix_str(man.summary_all(split_string=','))
 
     return man

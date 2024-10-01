@@ -175,7 +175,7 @@ def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
 
         if verbose:
             print('[TRAIN]', log_info['train_loss'][-1])
-            print('[VALID]', log_info['val_metric'][-1])
+            print('[VALID]', log_info['valid_metric'][-1])
             print('[TEST]', log_info['test_metric'][-1])
 
             with open(log_dir, 'w') as Fout:
