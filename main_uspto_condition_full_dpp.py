@@ -181,8 +181,9 @@ def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
             with open(log_dir, 'w') as Fout:
                 json.dump(log_info, Fout, indent=4)
 
-            if best_pref is None or val_results['overall'] > best_pref:
-                best_pref, best_ep = val_results['overall'], ep
+            val_json = log_info['valid_metric'][-1]
+            if best_pref is None or val_json['overall'] > best_pref:
+                best_pref, best_ep = val_json['overall'], ep
                 torch.save(model.module.state_dict(), model_dir)
 
         if ep >= args.warmup and ep >= args.step_start:

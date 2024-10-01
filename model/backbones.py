@@ -1,8 +1,9 @@
 import torch
 from .layers import SelfLoopGATConv as MyGATConv
 from .layers import SparseEdgeUpdateLayer
-from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 import numpy as np
+
+from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 
 
 class GATBase(torch.nn.Module):
