@@ -131,6 +131,10 @@ def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
         with_type=True, ntypes=3, init_rxn=args.init_rxn
     ).to(device)
 
+    if args.ckpt_path != "":
+        wt = torch.load(args.ckpt_path, map_location=device)
+        model.load_state_dict(wt)
+
     model = torch.nn.parallel.DistributedDataParallel(
         model, device_ids=[worker_idx], output_device=worker_idx,
         find_unused_parameters=True
@@ -292,6 +296,15 @@ if __name__ == '__main__':
         help='the number of workers for training'
     )
 
+    parser.add_argument(
+        '--label_path', default='', type=str,
+        help='the path of label mapper, required when ckpt given'
+    )
+    parser.add_argument(
+        '--ckpt_path', default='', type=str,
+        help='the path of pretrained checkpoints'
+    )
+
     # data config
 
     parser.add_argument(
@@ -329,10 +342,15 @@ if __name__ == '__main__':
     with open(args.data_path) as Fin:
         raw_info = json.load(Fin)
 
-    label_mapper = parse_uspto_condition_mapper(raw_info, True)
+    if args.ckpt_path != '':
+        assert args.label_path != '', 'require label mapper for model'
+        with open(args.label_path, 'rb') as Fin:
+            label_mapper = pickle.load(Fin)
+    else:
+        label_mapper = parse_uspto_condition_mapper(raw_info, True)
 
-    with open(token_dir, 'wb') as Fout:
-        pickle.dump(label_mapper, Fout)
+        with open(token_dir, 'wb') as Fout:
+            pickle.dump(label_mapper, Fout)
 
     torch_mp.spawn(
         main_worker, nprocs=args.num_gpus,
