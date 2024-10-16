@@ -34,18 +34,7 @@ def clear_map_number(smi):
 def canonical_smiles(smi):
     """Canonicalize a SMILES without atom mapping"""
     mol = Chem.MolFromSmiles(smi)
-    if mol is None:
-        return smi
-    else:
-        canonical_smi = Chem.MolToSmiles(mol)
-        # print('>>', canonical_smi)
-        if '.' in canonical_smi:
-            canonical_smi_list = canonical_smi.split('.')
-            canonical_smi_list = sorted(
-                canonical_smi_list, key=lambda x: (len(x), x)
-            )
-            canonical_smi = '.'.join(canonical_smi_list)
-        return canonical_smi
+    return smi if mol is None else Chem.MolToSmiles(mol)
 
 
 def resplit_reag(reac, reag, rxn_with_frag):
