@@ -67,48 +67,59 @@ def parse_uspto_condition_data(data_path, verbose=True):
     return all_data, name2idx
 
 
-def parse_dataset_by_smiles_500(json_files):
-    # 创建一个空的DataFrame用于存储所有文件的数据
-    all_data = pd.DataFrame()
+def load_uspto_mt_500_gen(data_path, remap=None, part=None):
+    if remap is None:
+        with open(os.path.join(data_path, 'all_tokens.json')) as F:
+            reag_list = json.load(F)
+        remap = Tokenizer(reag_list, {'<UNK>', '<CLS>', '<END>', '<PAD>', '`'})
 
-    for json_file in json_files:
-        # 读取JSON文件
-        with open(json_file, 'r') as file:
-            data = json.load(file)
+    with open(os.path.join(data_path, 'all_reagents.json')) as F:
+        INFO = json.load(F)
+    reag_order = {k: idx for idx, k in enumerate(INFO)}
 
-        # 转换为DataFrame并提取需要的列
-        df = pd.DataFrame(data)
-        if 'canonical_rxn' not in df.columns:
-            print(f"Warning: 'canonical_rxn' column not found in {json_file}")
-            continue
+    rxns, px = [[], [], []], 0
+    labels = [[], [], []]
+    if part is None:
+        iterx = ['train.json', 'val.json', 'test.json']
+    else:
+        iterx = [f'{part}.json']
+    for infos in iterx:
+        F = open(os.path.join(data_path, infos))
+        setx = json.load(F)
+        F.close()
+        for lin in setx:
+            rxns[px].append(lin['new_mapped_rxn'])
+            lin['reagent_list'].sort(key=lambda x: reag_order[x])
+            lbs = []
+            for tdx, x in enumerate(lin['reagent_list']):
+                if tdx > 0:
+                    lbs.append('`')
+                lbs.extend(smi_tokenizer(x))
+            labels[px].append(lbs)
+        px += 1
 
-        # 添加dataset列，以文件名（去掉扩展名）作为值
-        df['dataset'] = os.path.splitext(os.path.basename(json_file))[0]
+    if part is not None:
+        return ReactionPredDataset(
+            reactions=rxns[0], labels=labels[0],
+            cls_id='<CLS>', end_id='<END>'
+        ), remap
 
-        # 只保留 'canonical_rxn' 和 'dataset' 两列
-        df_filtered = df[['canonical_rxn', 'dataset']]
+    train_set = ReactionPredDataset(
+        reactions=rxns[0], labels=labels[0],
+        cls_id='<CLS>', end_id='<END>'
+    )
 
-        # 将当前文件的数据追加到总DataFrame中
-        all_data = pd.concat([all_data, df_filtered], ignore_index=True)
+    val_set = ReactionPredDataset(
+        reactions=rxns[1], labels=labels[1],
+        cls_id='<CLS>', end_id='<END>'
+    )
 
-    # 对 'canonical_rxn' 列应用 edit_function 函数进行修改
-    all_data['canonical_rxn'] = all_data['canonical_rxn'].apply(edit)
+    test_set = ReactionPredDataset(
+        reactions=rxns[2], labels=labels[2],
+        cls_id='<CLS>', end_id="<END>"
+    )
 
-    # 重新去重
-    all_data_deduplicated = all_data.drop_duplicates(
-        subset=['canonical_rxn', 'dataset'], keep='first')
-
-    # 重置索引，使id从0开始连续
-    all_data_deduplicated = all_data_deduplicated.reset_index(drop=True)
-
-    # 创建 'data_by_id' 字典，以id为键，包含其他字段作为值
-    data_by_id = all_data_deduplicated.to_dict(orient='index')
-
-    # 将结果保存到JSON文件
-    with open("output500.json", "w") as file:
-        json.dump(data_by_id, file, indent=4)
-
-    return data_by_id
+    return train_set, val_set, test_set, remap
 
 
 def fix_seed(seed):

@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser.add_argument('--file', required=True)
     parser.add_argument(
         '--data_type', required=True, help='the type for data to convert',
-        choices=['mole_feature', 'json', 'rxn_feature'],
+        choices=['mole_feature', 'json', 'semi_feature'],
     )
     parser.add_argument(
         '--dataset',  choices=['uspto_condition', 'uspto_500mt'],
@@ -30,8 +30,8 @@ if __name__ == '__main__':
             canonical_smiles(k): v for k, v in ft['smiles2idx'].items()
         }
         torch.save(ft, args.file)
-    elif args.data_type == 'rxn_feature':
-        ft = troch.load(args.file)
+    elif args.data_type == 'semi_feature':
+        ft = torch.load(args.file)
         ft['smiles2idx'] = {
             (cano_rxn(a), canonical_smiles(b)): v
             for (a, b), v in ft['smiles2idx'].items()

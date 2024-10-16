@@ -141,7 +141,7 @@ def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
     )
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma, verbose=verbose)
+    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma)
 
     print(f'[INFO] Process {worker_idx} model built')
 
@@ -192,6 +192,8 @@ def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
 
         if ep >= args.warmup and ep >= args.step_start:
             lr_sher.step()
+            if verbose:
+                print('[Lr]', lr_sher.get_last_lr())
 
         if args.early_stop >= 5 and ep > max(10, args.early_stop):
             tx = log_info['valid_metric'][-args.early_stop:]
@@ -349,8 +351,8 @@ if __name__ == '__main__':
     else:
         label_mapper = parse_uspto_condition_mapper(raw_info, True)
 
-        with open(token_dir, 'wb') as Fout:
-            pickle.dump(label_mapper, Fout)
+    with open(token_dir, 'wb') as Fout:
+        pickle.dump(label_mapper, Fout)
 
     torch_mp.spawn(
         main_worker, nprocs=args.num_gpus,
