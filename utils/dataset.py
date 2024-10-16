@@ -223,12 +223,10 @@ def uspto_condition_final(batch, G, hop, max_neighbors=None):
     return x_infos + (labels, label_types)
 
 
-def uspto_500mt_final(batch, G, hop, begin_tok, end_tok, max_neighbors=None):
+def uspto_500mt_final(batch, G, hop, max_neighbors=None):
     x_infos = reaction_graph_final(
         reactions=[x[0] for x in batch], G=G, hop=hop,
         max_neighbors=max_neighbors,
     )
-
-    labels = [[begin_tok] + x + [end_tok] for x in labels]
-
+    labels = [x[1] for x in batch]
     return x_infos + (labels, )
