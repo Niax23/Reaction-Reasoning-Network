@@ -77,8 +77,7 @@ def load_uspto_mt_500_gen(data_path, remap=None, part=None):
         INFO = json.load(F)
     reag_order = {k: idx for idx, k in enumerate(INFO)}
 
-    rxns, px = [[], [], []], 0
-    labels = [[], [], []]
+    rxn_infos, px = [[], [], []], 0
     if part is None:
         iterx = ['train.json', 'val.json', 'test.json']
     else:
@@ -88,38 +87,28 @@ def load_uspto_mt_500_gen(data_path, remap=None, part=None):
         setx = json.load(F)
         F.close()
         for lin in setx:
-            rxns[px].append(lin['new_mapped_rxn'])
+            this_line = {
+                'canonical_rxn': lin['clear_cano_rxn'],
+                'mapped_rxn': lin['new_mapped_rxn'],
+                'reactants': lin['reac_list'],
+                'products': [lin['products']],
+                'mapped_reac': lin['mapped_reac_list'],
+                'mapped_prod': [lin['new_mapped_rxn'].split('>>')[1]]
+            }
             lin['reagent_list'].sort(key=lambda x: reag_order[x])
             lbs = []
             for tdx, x in enumerate(lin['reagent_list']):
                 if tdx > 0:
                     lbs.append('`')
                 lbs.extend(smi_tokenizer(x))
-            labels[px].append(lbs)
+            this_line['label'] = lbs
+            rxn_infos.append(this_line)
         px += 1
 
     if part is not None:
-        return ReactionPredDataset(
-            reactions=rxns[0], labels=labels[0],
-            cls_id='<CLS>', end_id='<END>'
-        ), remap
+        rxn_infos[0], remap
 
-    train_set = ReactionPredDataset(
-        reactions=rxns[0], labels=labels[0],
-        cls_id='<CLS>', end_id='<END>'
-    )
-
-    val_set = ReactionPredDataset(
-        reactions=rxns[1], labels=labels[1],
-        cls_id='<CLS>', end_id='<END>'
-    )
-
-    test_set = ReactionPredDataset(
-        reactions=rxns[2], labels=labels[2],
-        cls_id='<CLS>', end_id="<END>"
-    )
-
-    return train_set, val_set, test_set, remap
+    return rxn_infos, remap
 
 
 def fix_seed(seed):

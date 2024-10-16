@@ -50,11 +50,17 @@ def canonical_smiles(smi):
 
 def resplit_reag(reac, reag, rxn_with_frag):
     reac_frag, prod = rxn_with_frag.split('>>')
-    cntz = {}
+    cntz, um2m = {}, {}
     for x in reag:
         key = clear_map_number(x)
         cntz[key] = cntz.get(key, 0) + 1
-    reapx, reacx = [], []
+    for x in reac:
+        key = clear_map_number(x)
+        if key not in um2m:
+            um2m[key] = []
+        um2m[key].append(x)
+
+    reapx, reacx, mreacx = [], [], []
     for x in reac_frag.split('.'):
         pz, ok, cnty = x.split('~'), True, {}
         for y in pz:
@@ -69,11 +75,19 @@ def resplit_reag(reac, reag, rxn_with_frag):
         if ok:
             for k, v in cnty.items():
                 cntz[k] -= v
-            reapx.append(x.replace('~', '.'))
+            reapx.append(canonical_smiles(x.replace('~', '.')))
         else:
-            reacx.append(x.replace('~', '.'))
+            reacx.append(canonical_smiles(x.replace('~', '.')))
+            this_line = []
+            for t in pz:
+                key = clear_map_number(t)
+                if len(um2m.get(key, [])) > 0:
+                    this_line.append(um2m[key].pop())
+                else:
+                    this_line.append(key)
+            mreacx.append('.'.join(this_line))
 
-    return reacx, reapx
+    return mreacx, reacx, reapx
 
 
 def check(reac, reag, oldx):
@@ -98,18 +112,27 @@ if __name__ == '__main__':
             old_reac, prod = mapped_rxn.split('>>')
             rxn_with_frag = ele['canonical_rxn_with_fragment_info']
             reac, reag = split_reac_reag(mapped_rxn)
-            new_reac, new_reag = resplit_reag(reac, reag, rxn_with_frag)
+            new_map_reac, new_reac, new_reag = \
+                resplit_reag(reac, reag, rxn_with_frag)
 
-            if not check('.'.join(new_reac), '.'.join(new_reag), old_reac):
+            if not check('.'.join(new_map_reac), '.'.join(new_reag), old_reac):
                 print('map_rxn', mapped_rxn)
                 print('new_reac', new_reac)
+                print('new_mapped_reac', new_map_reac)
                 print('reag_list', new_reag)
                 print('prod', prod)
                 exit()
+
+            clear_rxn = canonical_smiles('.'.join(new_reac)) + '>>' + \
+                canonical_smiles(ele['products'])
+
             tline = {
-                'new_mapped_rxn': f'{".".join(new_reac)}>>{prod}',
+                'new_mapped_rxn': f'{".".join(new_map_reac)}>>{prod}',
+                'reac_list': new_reac,
                 'reagent_list': new_reag,
-                'new_reac_list': new_reac
+                'mapped_reac_list': new_map_reac,
+                'products': canonical_smiles(ele['products']),
+                'clear_cano_rxn': clear_rxn
             }
             tline.update(ele)
             out_infos.append(tline)
