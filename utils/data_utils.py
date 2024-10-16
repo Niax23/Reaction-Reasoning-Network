@@ -101,6 +101,7 @@ def load_uspto_mt_500_gen(data_path, remap=None, part=None):
                 if tdx > 0:
                     lbs.append('`')
                 lbs.extend(smi_tokenizer(x))
+            lbs.append('<END>')
             this_line['label'] = lbs
             rxn_infos.append(this_line)
         px += 1

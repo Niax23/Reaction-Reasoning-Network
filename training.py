@@ -564,3 +564,96 @@ def eval_uspto_condition_full(loader, model, device):
     results['overall'] = overall
     results = {k: v.float().mean().item() for k, v in results.items()}
     return results
+
+
+def train_uspto_500mt_full(
+    loader, model, optimizer, tokener, device, pad_idx, warmup=False
+):
+    model, los_cur = model.train(), []
+    if warmup:
+        warmup_iters = len(loader) - 1
+        warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
+
+    for data in tqdm(loader):
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            reactant_pairs, product_pairs, n_node, label = data
+
+        mole_graphs = mole_graphs.to(device)
+        edge_index = edge_index.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+        semi_graphs = semi_graphs.to(device)
+
+        label = tokener.encode2d(label)
+        label = torch.LongTensor(label).to(device)
+        trans_op_mask, diag_mask = generate_tgt_mask(label[:, :-1], pad_idx)
+
+        res = model(
+            mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+            rxn_ids=rxn_ids, required_ids=required_ids, edge_index=edge_index,
+            edge_types=edge_types, semi_graphs=semi_graphs, n_nodes=n_node,
+            semi_keys=semi_keys, semi_key2idxs=smkey2idx, labels=label[:, :-1],
+            attn_mask=diag_mask, key_padding_mask=trans_op_mask,
+            reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+        )
+
+        loss = calc_trans_loss(res, labels, -1000)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        los_cur.append(loss.item())
+        if warmup:
+            warmup_sher.step()
+
+    return np.mean(los_cur)
+
+
+def eval_uspto_condition_full(loader, model, device):
+    model, accs, gt = model.eval(), [], []
+    for data in tqdm(loader):
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            reactant_pairs, product_pairs, n_node, labels = data
+
+        mole_graphs = mole_graphs.to(device)
+        edge_index = edge_index.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+        semi_graphs = semi_graphs.to(device)
+
+        label = tokener.encode2d(label)
+        label = torch.LongTensor(label).to(device)
+        trans_op_mask, diag_mask = generate_tgt_mask(label[:, :-1], pad_idx)
+
+        with torch.no_grad():
+            res = model(
+                mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+                rxn_ids=rxn_ids, required_ids=required_ids,
+                edge_index=edge_index, edge_types=edge_types,
+                semi_graphs=semi_graphs, semi_keys=semi_keys,
+                semi_key2idxs=smkey2idx, n_nodes=n_node,
+                labels=labels[:, :-1], attn_mask=diag_mask,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+                key_padding_mask=trans_op_mask,
+            )
+            result = convert_log_into_label(res, mod='softmax')
+
+        accs.append(result)
+        gt.append(labels)
+
+    accs = torch.cat(accs, dim=0)
+    gt = torch.cat(gt, dim=0)
+
+    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
+    results, overall = {}, None
+    for idx, k in enumerate(keys):
+        results[k] = accs[:, idx] == gt[:, idx]
+        if idx == 0:
+            overall = accs[:, idx] == gt[:, idx]
+        else:
+            overall &= (accs[:, idx] == gt[:, idx])
+
+    results['overall'] = overall
+    results = {k: v.float().mean().item() for k, v in results.items()}
+    return results

@@ -203,11 +203,11 @@ if __name__ == '__main__':
         gnn1=mol_gnn, gnn2=net_gnn, PE=pos_env, net_dim=args.dim,
         heads=args.heads, dropout=args.dropout, dec_layers=args.decoder_layer,
         n_words=len(label_mapper), mol_dim=args.dim,
-        with_type=True, ntypes=3, init_rxn=args.init_rxn
+        with_type=False, init_rxn=args.init_rxn
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma, verbose=True)
+    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma)
 
     log_info = {
         'args': args.__dict__, 'train_loss': [],
@@ -241,6 +241,7 @@ if __name__ == '__main__':
 
         if ep >= args.warmup and ep >= args.step_start:
             lr_sher.step()
+            print('[Lr]', lr_sher.get_last_lr())
 
         with open(log_dir, 'w') as Fout:
             json.dump(log_info, Fout, indent=4)
