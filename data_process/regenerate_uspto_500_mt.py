@@ -54,7 +54,7 @@ def resplit_reag(reac, reag, rxn_with_frag):
         pz, ok, cnty = x.split('~'), True, {}
         for y in pz:
             key = clear_map_number(y)
-            cnty[y] = cnty.get(key, 0) + 1
+            cnty[key] = cnty.get(key, 0) + 1
 
         for k, v in cnty.items():
             if cntz.get(k, 0) < v:

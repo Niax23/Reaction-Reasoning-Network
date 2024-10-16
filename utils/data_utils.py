@@ -7,6 +7,7 @@ import json
 import torch
 import numpy as np
 import random
+from .tokenlizer import Tokenizer, smi_tokenizer
 
 
 def clk_x(x):
@@ -96,14 +97,14 @@ def load_uspto_mt_500_gen(data_path, remap=None, part=None):
                 'mapped_prod': [lin['new_mapped_rxn'].split('>>')[1]]
             }
             lin['reagent_list'].sort(key=lambda x: reag_order[x])
-            lbs = []
+            lbs = ['<CLS>']
             for tdx, x in enumerate(lin['reagent_list']):
                 if tdx > 0:
                     lbs.append('`')
                 lbs.extend(smi_tokenizer(x))
             lbs.append('<END>')
             this_line['label'] = lbs
-            rxn_infos.append(this_line)
+            rxn_infos[px].append(this_line)
         px += 1
 
     if part is not None:
