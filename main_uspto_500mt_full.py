@@ -9,7 +9,7 @@ from utils.dataset import ConditionDataset, uspto_condition_final
 
 
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
-from training import train_uspto_condition_full, eval_uspto_condition_full
+from training import train_uspto_500mt_full, eval_uspto_500mt_full
 import argparse
 import os
 import time

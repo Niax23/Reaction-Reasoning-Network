@@ -609,8 +609,8 @@ def train_uspto_500mt_full(
     return np.mean(los_cur)
 
 
-def eval_uspto_condition_full(loader, model, device):
-    model, accs, gt = model.eval(), [], []
+def eval_uspto_500mt_full(loader, model, device, tokener):
+    model, accs = model.eval(), []
     for data in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
             edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
@@ -637,23 +637,11 @@ def eval_uspto_condition_full(loader, model, device):
                 reactant_pairs=reactant_pairs, product_pairs=product_pairs,
                 key_padding_mask=trans_op_mask,
             )
-            result = convert_log_into_label(res, mod='softmax')
 
-        accs.append(result)
-        gt.append(labels)
+        trans_pred = convert_log_into_label(res, mod='softmax')
+        trans_pred = correct_trans_output(trans_pred, end_idx, pad_idx)
+        trans_acc = data_eval_trans(trans_pred, trans_dec_op, True)
+        accx.append(trans_acc)
 
-    accs = torch.cat(accs, dim=0)
-    gt = torch.cat(gt, dim=0)
-
-    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
-    results, overall = {}, None
-    for idx, k in enumerate(keys):
-        results[k] = accs[:, idx] == gt[:, idx]
-        if idx == 0:
-            overall = accs[:, idx] == gt[:, idx]
-        else:
-            overall &= (accs[:, idx] == gt[:, idx])
-
-    results['overall'] = overall
-    results = {k: v.float().mean().item() for k, v in results.items()}
-    return results
+    accx = torch.cat(accx, dim=0).float()
+    return accx.mean().item()
