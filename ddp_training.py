@@ -289,3 +289,108 @@ def ddp_eval_uspto_condition_full(loader, model, device, verbose=False):
             iterx.set_postfix_str(man.summary_all(split_string=','))
 
     return man
+
+
+def train_uspto_500mt_full_ddp(
+    loader, model, optimizer, tokener, device, pad_idx,
+    warmup=False, verbose=False
+):
+    model = model.train()
+    loss_cur = MetricCollector('loss', type_fmt=':.3f')
+    manager = MetricManager([loss_cur])
+    if warmup:
+        warmup_iters = len(loader) - 1
+        warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
+
+    iterx = tqdm(loader) if verbose else loader
+
+    for data in iterx:
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            reactant_pairs, product_pairs, n_node, seq = data
+
+        mole_graphs = mole_graphs.to(device, non_blocking=True)
+        edge_index = edge_index.to(device, non_blocking=True)
+        reactant_pairs = reactant_pairs.to(device, non_blocking=True)
+        product_pairs = product_pairs.to(device, non_blocking=True)
+        semi_graphs = semi_graphs.to(device, non_blocking=True)
+
+        seq = tokener.encode2d(seq)
+        seq = torch.LongTensor(seq).to(device, non_blocking=True)
+        trans_op_mask, diag_mask = generate_tgt_mask(
+            seq[:, :-1], pad_idx=pad_idx, device='cpu'
+        )
+        trans_op_mask = trans_op_mask.to(device, non_blocking=True)
+        diag_mask = diag_mask.to(device, non_blocking=True)
+        semi_keys = [tuple(x) for x in semi_keys]
+
+        res = model(
+            mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+            rxn_ids=rxn_ids, required_ids=required_ids, edge_index=edge_index,
+            edge_types=edge_types, semi_graphs=semi_graphs, n_nodes=n_node,
+            semi_keys=semi_keys, semi_key2idxs=smkey2idx, labels=seq[:, 1:-1],
+            attn_mask=diag_mask, key_padding_mask=trans_op_mask,
+            reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+        )
+
+        loss = calc_trans_loss(res, seq[:, 1:], -1000)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        loss_cur.update(loss.item())
+        if warmup:
+            warmup_sher.step()
+
+        if verbose:
+            iterx.set_postfix_str(manager.summary_all())
+
+    return manager
+
+
+def eval_uspto_500mt_full_ddp(
+    loader, model, device, tokener, end_idx, pad_idx,
+    verbose=False
+):
+    model = model.eval()
+    ov = MetricCollector('trans_acc', type_fmt=':.2f')
+    man = MetricManager([ov])
+    iterx = tqdm(loader) if verbose else loader
+    for data in iterx:
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            reactant_pairs, product_pairs, n_node, seq = data
+
+        mole_graphs = mole_graphs.to(device, non_blocking=True)
+        edge_index = edge_index.to(device, non_blocking=True)
+        reactant_pairs = reactant_pairs.to(device, non_blocking=True)
+        product_pairs = product_pairs.to(device, non_blocking=True)
+        semi_graphs = semi_graphs.to(device, non_blocking=True)
+
+        seq = tokener.encode2d(seq)
+        seq = torch.LongTensor(seq).to(device, non_blocking=True)
+        trans_op_mask, diag_mask = generate_tgt_mask(
+            seq[:, :-1], pad_idx=pad_idx, device='cpu'
+        )
+        trans_op_mask = trans_op_mask.to(device, non_blocking=True)
+        diag_mask = diag_mask.to(device, non_blocking=True)
+        semi_keys = [tuple(x) for x in semi_keys]
+        with torch.no_grad():
+            res = model(
+                mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+                rxn_ids=rxn_ids, required_ids=required_ids,
+                edge_index=edge_index, edge_types=edge_types,
+                semi_graphs=semi_graphs, semi_keys=semi_keys,
+                semi_key2idxs=smkey2idx, n_nodes=n_node,
+                labels=seq[:, 1:-1], attn_mask=diag_mask,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+                key_padding_mask=trans_op_mask,
+            )
+
+        trans_pred = convert_log_into_label(res, mod='softmax')
+        trans_pred = correct_trans_output(trans_pred, end_idx, pad_idx)
+        trans_acc = data_eval_trans(trans_pred, seq[:, 1:], True)
+        ov.update(trans_acc.sum().item(), trans_acc.shape[0])
+        if verbose:
+            iterx.set_postfix_str(man.summary_all(split_string=','))
+
+    return man
