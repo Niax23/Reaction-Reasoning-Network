@@ -649,3 +649,74 @@ def eval_uspto_500mt_full(loader, model, device, tokener, end_idx, pad_idx):
 
     accx = torch.cat(accx, dim=0).float()
     return accx.mean().item()
+
+def train_uspto_500mt_ablation(
+    loader, model, optimizer, tokener, device, pad_idx, warmup=False
+):
+    model, los_cur = model.train(), []
+    if warmup:
+        warmup_iters = len(loader) - 1
+        warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
+
+    for data in tqdm(loader):
+        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, n_reac, n_prod, n_nodes = data
+
+        reac_graphs = reac_graphs.to(device)
+        prod_graphs = prod_graphs.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+
+        seq = tokener.encode2d(seq)
+        seq = torch.LongTensor(seq).to(device)
+        trans_op_mask, diag_mask = generate_tgt_mask(
+            seq[:, :-1], pad_idx=pad_idx, device=device
+        )
+
+        res = model(
+                reac_graphs, prod_graphs,n_reac,n_prod,n_nodes,
+                labels=seq[:, 1:-1], attn_mask=diag_mask,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+                key_padding_mask=trans_op_mask,
+            )
+        loss = calc_trans_loss(res, seq[:, 1:], -1000)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        los_cur.append(loss.item())
+        if warmup:
+            warmup_sher.step()
+
+    return np.mean(los_cur)
+
+
+def eval_uspto_500mt_ablation(loader, model, device, tokener, end_idx, pad_idx):
+    model, accx = model.eval(), []
+    for data in tqdm(loader):
+        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, n_reac, n_prod, n_nodes = data
+
+        reac_graphs = reac_graphs.to(device)
+        prod_graphs = prod_graphs.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+
+        seq = tokener.encode2d(seq)
+        seq = torch.LongTensor(seq).to(device)
+        trans_op_mask, diag_mask = generate_tgt_mask(
+            seq[:, :-1], pad_idx=pad_idx, device=device
+        )
+
+        with torch.no_grad():
+            res = model(
+                reac_graphs, prod_graphs,n_reac,n_prod,n_nodes,
+                labels=seq[:, 1:-1], attn_mask=diag_mask,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+                key_padding_mask=trans_op_mask,
+            )
+
+        trans_pred = convert_log_into_label(res, mod='softmax')
+        trans_pred = correct_trans_output(trans_pred, end_idx, pad_idx)
+        trans_acc = data_eval_trans(trans_pred, seq[:, 1:], True)
+        accx.append(trans_acc)
+
+    accx = torch.cat(accx, dim=0).float()
+    return accx.mean().item()
