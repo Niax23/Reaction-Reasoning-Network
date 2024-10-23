@@ -276,3 +276,45 @@ def uspto_500mt_ablation(batch):
     labels = [x[1] for x in batch]
 
     return reac_graphs, prod_graphs, reactant_pairs, product_pairs, labels, reactant_id_counter, product_id_counter, len(batch)
+
+
+def uspto_condition_ablation(batch):
+    reactant_to_id = {}
+    reactant_id_counter = 0
+    product_to_id = {}
+    product_id_counter = 0
+
+    reactant_pairs = []
+    product_pairs = []
+    reac_molecules, prod_molecules = [], []
+
+    for idx, (reaction_smiles, label) in enumerate(batch):
+        reaction_id = idx
+        reactants, products = parse_smiles(reaction_smiles)
+
+        for reactant in reactants:
+            if reactant not in reactant_to_id:
+                reactant_to_id[reactant] = reactant_id_counter
+                reac_molecules.append(reactant)
+                reactant_id_counter += 1
+            reactant_id = reactant_to_id[reactant]
+            reactant_pairs.append((reaction_id, reactant_id))
+
+        for product in products:
+            if product not in product_to_id:
+                product_to_id[product] = product_id_counter
+                prod_molecules.append(product)
+                product_id_counter += 1
+            product_id = product_to_id[product]
+            product_pairs.append((reaction_id, product_id))
+
+    product_pairs = torch.LongTensor(product_pairs)
+    reactant_pairs = torch.LongTensor(reactant_pairs)
+    reac_graphs = [smiles2graph(x, with_amap=False) for x in reac_molecules]
+    prod_graphs = [smiles2graph(x, with_amap=False) for x in prod_molecules]
+    reac_graphs = graph_col_fn(reac_graphs)
+    prod_graphs = graph_col_fn(prod_graphs)
+    labels = torch.LongTensor([x[1] for x in batch])
+    label_types = torch.LongTensor([[0, 1, 1, 2]] * labels.shape[0])
+
+    return reac_graphs, prod_graphs, reactant_pairs, product_pairs, labels, label_types, reactant_id_counter, product_id_counter, len(batch)

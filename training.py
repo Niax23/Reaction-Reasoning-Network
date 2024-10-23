@@ -167,7 +167,7 @@ def train_uspto_condition_rxn(
         warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
 
     for data in tqdm(loader):
-        mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
+        mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
             edge_types, required_ids, reactant_pairs, product_pairs, \
             n_node, labels, label_types = data
 
@@ -210,7 +210,7 @@ def train_uspto_condition_rxn(
 def eval_uspto_condition_rxn(loader, model, device, with_rxn=False):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
-        mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index,\
+        mole_embs, molecule_ids, rxn_sms, rxn_ids, edge_index, \
             edge_types, required_ids, reactant_pairs, product_pairs, \
             n_node, labels, label_types = data
 
@@ -484,7 +484,7 @@ def train_uspto_condition_full(
 
     for data in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
-            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids, \
             reactant_pairs, product_pairs, n_node, labels, label_types = data
 
         mole_graphs = mole_graphs.to(device)
@@ -521,7 +521,7 @@ def eval_uspto_condition_full(loader, model, device):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
-            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids, \
             reactant_pairs, product_pairs, n_node, labels, label_types = data
 
         mole_graphs = mole_graphs.to(device)
@@ -576,7 +576,7 @@ def train_uspto_500mt_full(
 
     for data in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
-            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids, \
             reactant_pairs, product_pairs, n_node, seq = data
 
         mole_graphs = mole_graphs.to(device)
@@ -615,7 +615,7 @@ def eval_uspto_500mt_full(loader, model, device, tokener, end_idx, pad_idx):
     model, accx = model.eval(), []
     for data in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
-            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids,\
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids, \
             reactant_pairs, product_pairs, n_node, seq = data
 
         mole_graphs = mole_graphs.to(device)
@@ -650,6 +650,7 @@ def eval_uspto_500mt_full(loader, model, device, tokener, end_idx, pad_idx):
     accx = torch.cat(accx, dim=0).float()
     return accx.mean().item()
 
+
 def train_uspto_500mt_ablation(
     loader, model, optimizer, tokener, device, pad_idx, warmup=False
 ):
@@ -673,11 +674,11 @@ def train_uspto_500mt_ablation(
         )
 
         res = model(
-                reac_graphs, prod_graphs,n_reac,n_prod,n_nodes,
-                labels=seq[:, 1:-1], attn_mask=diag_mask,
-                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
-                key_padding_mask=trans_op_mask,
-            )
+            reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
+            labels=seq[:, :-1], attn_mask=diag_mask,
+            reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+            key_padding_mask=trans_op_mask,
+        )
         loss = calc_trans_loss(res, seq[:, 1:], -1000)
         loss.backward()
         optimizer.step()
@@ -707,8 +708,8 @@ def eval_uspto_500mt_ablation(loader, model, device, tokener, end_idx, pad_idx):
 
         with torch.no_grad():
             res = model(
-                reac_graphs, prod_graphs,n_reac,n_prod,n_nodes,
-                labels=seq[:, 1:-1], attn_mask=diag_mask,
+                reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
+                labels=seq[:, :-1], attn_mask=diag_mask,
                 reactant_pairs=reactant_pairs, product_pairs=product_pairs,
                 key_padding_mask=trans_op_mask,
             )
@@ -720,3 +721,84 @@ def eval_uspto_500mt_ablation(loader, model, device, tokener, end_idx, pad_idx):
 
     accx = torch.cat(accx, dim=0).float()
     return accx.mean().item()
+
+
+def train_uspto_condition_ablation(
+    loader, model, optimizer, device, warmup=False
+):
+    model, los_cur = model.train(), []
+    if warmup:
+        warmup_iters = len(loader) - 1
+        warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
+
+    for data in tqdm(loader):
+        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, label_types, n_reac, n_prod, n_nodes = data
+
+        reac_graphs = reac_graphs.to(device)
+        prod_graphs = prod_graphs.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+
+        seq = seq.to(device)
+        label_types = label_types.to(device)
+        sub_mask = generate_square_subsequent_mask(5, device)
+
+        res = model(
+            reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
+            labels=seq[:, :-1], attn_mask=sub_mask,
+            reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+            key_padding_mask=None, seq_types=label_types
+        )
+        loss = calc_trans_loss(res, seq, -1000)
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+        los_cur.append(loss.item())
+        if warmup:
+            warmup_sher.step()
+
+    return np.mean(los_cur)
+
+
+def eval_uspto_condition_ablation(loader, model, device):
+    model, accs, gt = model.eval(), [], []
+    for data in tqdm(loader):
+        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, label_types, n_reac, n_prod, n_nodes = data
+
+        reac_graphs = reac_graphs.to(device)
+        prod_graphs = prod_graphs.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+
+        seq = seq.to(device)
+        label_types = label_types.to(device)
+        sub_mask = generate_square_subsequent_mask(5, device)
+
+        with torch.no_grad():
+            res = model(
+                reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
+                labels=seq[:, :-1], attn_mask=sub_mask,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
+                key_padding_mask=None, seq_types=label_types
+            )
+
+        result = convert_log_into_label(res, mod='softmax')
+
+        accs.append(result)
+        gt.append(seq)
+
+    accs = torch.cat(accs, dim=0)
+    gt = torch.cat(gt, dim=0)
+
+    keys = ['catalyst', 'solvent1', 'solvent2', 'reagent1', 'reagent2']
+    results, overall = {}, None
+    for idx, k in enumerate(keys):
+        results[k] = accs[:, idx] == gt[:, idx]
+        if idx == 0:
+            overall = accs[:, idx] == gt[:, idx]
+        else:
+            overall &= (accs[:, idx] == gt[:, idx])
+
+    results['overall'] = overall
+    results = {k: v.float().mean().item() for k, v in results.items()}
+    return results
