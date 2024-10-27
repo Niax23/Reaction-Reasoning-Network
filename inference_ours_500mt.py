@@ -1,6 +1,8 @@
 import json
 from utils.dataset import reaction_graph_colfn
-from utils.data_utils import generate_square_subsequent_mask
+from utils.data_utils import generate_square_subsequent_mask, fix_seed
+import argparse
+from utils.sep_network import SepNetwork
 
 
 def beam_search(
@@ -92,7 +94,7 @@ def beam_search(
 
                 prob_beam[i][illegal] = -2e9
                 beam_top_k = prob_beam[i].topk(size, dim=0)
-                
+
                 input_beam[i] = input_beam[i][beam_top_k.indices]
                 prob_beam[i] = beam_top_k.values
                 alive_beam[i] = alive_beam[i][beam_top_k.indices]
@@ -122,3 +124,77 @@ def beam_search(
             r_smiles = r_smiles.replace('<UNK>', '').replace('`', '.')
             out_answers[i].append((y, r_smiles))
     return out_answers
+
+
+if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	parser.add_argument(
+        '--mole_layer', default=5, type=int,
+        help='the number of layer for mole gnn'
+    )
+    parser.add_argument(
+        '--dim', type=int, default=300,
+        help='the num of dim for the model'
+    )
+    parser.add_argument(
+        '--dropout', type=float, default=0.1,
+        help='the dropout for model'
+    )
+    parser.add_argument(
+        '--reaction_hop', type=int, default=1,
+        help='the number of hop for sampling graphs'
+    )
+    parser.add_argument(
+        '--negative_slope', type=float, default=0.2,
+        help='the negative slope of model'
+    )
+    parser.add_argument(
+        '--heads', type=int, default=4,
+        help='the number of heads for multihead attention'
+    )
+    parser.add_argument(
+        '--decoder_layer', type=int, default=6,
+        help='the num of layers for decoder'
+    )
+    parser.add_argument(
+        '--init_rxn', action='store_true',
+        help='use pretrained features to build rxn feat or not'
+    )
+
+    # inference config
+
+    parser.add_argument(
+        '--bs', type=int, default=32,
+        help='the batch size for training'
+    )
+
+    parser.add_argument(
+        '--seed', type=int, default=2023,
+        help='the random seed for training'
+    )
+
+    parser.add_argument(
+        '--device', type=int, default=-1,
+        help='CUDA device to use; -1 for CPU'
+    )
+
+    # data config
+
+    parser.add_argument(
+        '--transductive', action='store_true',
+        help='the use transductive training or not'
+    )
+    parser.add_argument(
+        '--data_path', required=True, type=str,
+        help='the path containing the data'
+    )
+
+    parser.add_argument(
+        '--max_neighbors', type=int, default=20,
+        help='max neighbors when sampling'
+    )
+
+    args = parser.parse_args()
+    print(args)
+
+    fix_seed(args.seed)
