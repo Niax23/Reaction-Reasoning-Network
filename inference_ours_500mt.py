@@ -1,8 +1,10 @@
+import pickle
 import json
 from utils.dataset import reaction_graph_colfn
 from utils.data_utils import generate_square_subsequent_mask, fix_seed
 import argparse
 from utils.sep_network import SepNetwork
+from utils.data_utils import load_uspto_mt_500_gen
 
 
 def beam_search(
@@ -137,10 +139,6 @@ if __name__ == '__main__':
         help='the num of dim for the model'
     )
     parser.add_argument(
-        '--dropout', type=float, default=0.1,
-        help='the dropout for model'
-    )
-    parser.add_argument(
         '--reaction_hop', type=int, default=1,
         help='the number of hop for sampling graphs'
     )
@@ -194,7 +192,108 @@ if __name__ == '__main__':
         help='max neighbors when sampling'
     )
 
+    parser.add_argument(
+    	'--token_ckpt', type=str, required=True,
+    	help='the path of ckpt containing tokenizer'
+    )
+
+    parser.add_argument(
+    	'--ckpt_path', type=str, required=True,
+    	help='the path of pretrained model weight'
+    )
+    parser.add_argument(
+    	'--output_dir', type=str, required=True,
+    	help='the path for outputing results'
+    )
+    parser.add_argument(
+    	'--beam', type=int, default=10,
+    	help='the beam size for beam search'
+    )
+    parser.add_argument(
+    	'--max_len', type=int, default=300,
+    	help='the max length for model'
+    )
+
+
     args = parser.parse_args()
     print(args)
 
     fix_seed(args.seed)
+
+
+    if torch.cuda.is_available() and args.device >= 0:
+        device = torch.device(f'cuda:{args.device}')
+    else:
+        device = torch.device('cpu')
+
+
+    with open(args.token_ckpt, 'rb') as Fin:
+    	label_mapper = pickle.load(Fin)
+
+    all_data, label_mapper = load_uspto_mt_500_gen(args.data_path, remap=label_mapper)
+
+    all_net = SepNetwork(all_data[0] + all_data[1] + all_data[2])
+
+    test_set = ConditionDataset(
+        reactions=[x['canonical_rxn'] for x in all_data[2]],
+        labels=[x['label'] for x in all_data[2]]
+    ) 
+
+    mol_gnn = GATBase(
+        num_layers=args.mole_layer, num_heads=args.heads, dropout=0,
+        embedding_dim=args.dim, negative_slope=args.negative_slope
+    )
+
+    net_gnn = RxnNetworkGNN(
+        num_layers=args.reaction_hop * 2 + 1, num_heads=args.heads,
+        dropout=0, embedding_dim=args.dim, negative_slope=args.negative_slope
+    )
+
+    pos_env = PositionalEncoding(args.dim, 0, maxlen=1024)
+
+    model = FullModel(
+        gnn1=mol_gnn, gnn2=net_gnn, PE=pos_env, net_dim=args.dim,
+        heads=args.heads, dropout=0, dec_layers=args.decoder_layer,
+        n_words=len(label_mapper), mol_dim=args.dim,
+        with_type=False, init_rxn=args.init_rxn
+    ).to(device)
+
+    weight = torch.load(args.ckpt_path, map_location=device)
+    model.load_state_dict(weight)
+
+    model = model.eval()
+
+    out_file = os.path.join(args.output_dir, f'answer-{time.time()}.json')
+
+    prediction_results, rxn2gt = [], {}
+
+    for x in range(0, len(test_set), args.bs):
+    	end_idx = min(len(test_set), x + args.bs)
+    	batch_data = [test_set[t] for t in list(range(x, end_idx))]
+    	query_keys = []
+
+    	for idx, (k, l) in enumerate(batch_data):
+    		query_keys.append(k)
+    		if k not in rxn2gt:
+    			rxn2gt[k] = []
+    		rxn2gt.append(''.join(l[1: -1]).replace('`', '.'))
+
+    	results = beam_search(
+    		model, label_mapper, query_keys, all_net, args.reaction_hop, 
+    		device, max_neighbor=args.max_neighbor, size=args.beam, 
+    		max_len=args.max_len, end_token='<END>'
+    	)
+
+    	for idx, p in enumerate(results):
+    		prediction_results.append({
+    			'query': query_keys[idx],
+    			'query_key': query_keys[idx],
+    			'prob_answer': p
+    		})
+    		
+
+
+
+
+
+
