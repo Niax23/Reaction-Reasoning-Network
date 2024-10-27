@@ -197,6 +197,7 @@ if __name__ == '__main__':
     	help='the path of ckpt containing tokenizer'
     )
 
+    # inference config
     parser.add_argument(
     	'--ckpt_path', type=str, required=True,
     	help='the path of pretrained model weight'
@@ -212,6 +213,10 @@ if __name__ == '__main__':
     parser.add_argument(
     	'--max_len', type=int, default=300,
     	help='the max length for model'
+    )
+    parser.add_argument(
+    	'--save_every', type=int, default=1000,
+    	help='the step for saving'
     )
 
 
@@ -290,7 +295,20 @@ if __name__ == '__main__':
     			'query_key': query_keys[idx],
     			'prob_answer': p
     		})
-    		
+
+    	if len(prediction_results) % args.save_every < args.bs:
+            outx = {
+                'rxn2gt': rxn2gt,
+                'answer': prediction_results,
+                'args': args.__dict__
+            }
+
+            with open(out_file, 'w') as Fout:
+                json.dump(outx, Fout, indent=4)
+
+
+
+
 
 
 
