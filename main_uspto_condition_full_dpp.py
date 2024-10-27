@@ -15,7 +15,6 @@ from utils.data_utils import (
 from utils.sep_network import SepNetwork
 from utils.dataset import ConditionDataset, uspto_condition_final
 
-
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
 from ddp_training import (
     ddp_train_uspto_condition_full, ddp_eval_uspto_condition_full
@@ -132,6 +131,7 @@ def main_worker(worker_idx, args, log_dir, model_dir, label_mapper):
     ).to(device)
 
     if args.ckpt_path != "":
+        print(f'[INFO {worker_idx}] Using {args.ckpt_path} as ckpt')
         wt = torch.load(args.ckpt_path, map_location=device)
         model.load_state_dict(wt)
 

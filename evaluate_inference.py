@@ -11,10 +11,13 @@ def save_cano(x):
         return None
     return Chem.MolToSmiles(mol)
 
+
 def remove_markers(text):
     if text.startswith("<CLS>") and text.endswith("<END>"):
         return text[len("<CLS>"): -len("<END>")].strip()
     return text
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -38,13 +41,13 @@ if __name__ == '__main__':
     real_answer = {}
 
     for k, v in INFO['rxn2gt'].items():
-            real_answer[k] = set(remove_markers(x) for x in v)
+        real_answer[k] = set(remove_markers(x) for x in v)
 
     for line in tqdm(INFO['answer']):
         this_line = np.zeros(args.beams)
         for idx, (prob, res) in enumerate(line['prob_answer']):
-            
-            #res = save_cano(res)S
+
+            # res = save_cano(res)S
             if res in real_answer[line['query_key']]:
                 this_line[idx:] += 1
                 break
