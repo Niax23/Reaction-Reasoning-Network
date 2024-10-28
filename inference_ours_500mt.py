@@ -1,10 +1,16 @@
 import pickle
 import json
-from utils.dataset import reaction_graph_colfn
+from utils.dataset import reaction_graph_final
 from utils.data_utils import generate_square_subsequent_mask, fix_seed
 import argparse
 from utils.sep_network import SepNetwork
 from utils.data_utils import load_uspto_mt_500_gen
+import torch
+from utils.dataset import ConditionDataset
+from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
+import os
+import time
+from tqdm import tqdm
 
 
 def beam_search(
@@ -14,12 +20,14 @@ def beam_search(
     model = model.eval()
     batch_size = len(samples)
     end_id = tokenizer.token2idx[end_token]
+
     probs = torch.Tensor([[0]] * batch_size).to(device)
     alive = torch.BoolTensor([[True]] * batch_size).to(device)
     nclose = torch.Tensor([[0]] * batch_size).to(device)
     belong = torch.LongTensor(list(range(batch_size)))
     belong = belong.unsqueeze(dim=-1).to(device)
     tgt = torch.LongTensor([[[]]] * batch_size).to(device)
+
     # [bs, 1, 1] / [bs, beam, len]
     fst_idx = tokenizer.token2idx['(']
     sec_idx = tokenizer.token2idx[")"]
@@ -27,10 +35,21 @@ def beam_search(
     mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
         edge_types, semi_graphs, edge_semi, smkey2idx, required_ids, \
         reactant_pairs, product_pairs, n_node = \
-        reaction_graph_colfn(samples, G, hop, max_neighbor)
+        reaction_graph_final(samples, G, hop, max_neighbor)
+
+    mole_graphs = mole_graphs.to(device)
+    edge_index = edge_index.to(device)
+    reactant_pairs = reactant_pairs.to(device)
+    product_pairs = product_pairs.to(device)
+    semi_graphs = semi_graphs.to(device)
 
     with torch.no_grad():
-        memory = model.encode()
+        memory = model.encode(
+            mole_graphs, mts, molecule_ids, rxn_ids, required_ids,
+            edge_index, edge_types, semi_graphs, edge_semi, smkey2idx,
+            n_node, reactant_pairs=reactant_pairs, product_pairs=product_pairs
+        )
+
         # [bs, dim]
         for idx in range(max_len):
             input_beam = [[] for _ in range(batch_size)]
@@ -55,15 +74,19 @@ def beam_search(
             if torch.all(ended).item():
                 break
 
-            tgt = tgt[alive]
-            probs = probs[alive]
-            nclose = nclose[alive]
-            belong = belong[alive]
             qmemory = memory.unsqueeze(dim=1).repeat(1, tgt.shape[1], 1)[alive]
             tgt_mask = generate_square_subsequent_mask(tgt.shape[2] + 1)
             tgt_mask = tgt_mask.to(device)
 
-            result = model.decode()
+            tgt = tgt[alive]
+            probs = probs[alive]
+            nclose = nclose[alive]
+            belong = belong[alive]
+
+            result = model.decode(
+                memory=qmemory, labels=tgt, attn_mask=tgt_mask,
+                key_padding_mask=None, seq_types=None
+            )
             # [n_cand, len, n_class]
             result = torch.log_softmax(result[:, -1], dim=-1)
             result_topk = result.topk(size, dim=-1, largest=True)
@@ -74,14 +97,13 @@ def beam_search(
                 is_sed = result_topk.indices[tdx] == sec_idx
 
                 tgt_base = tgt[tdx].repeat(size, 1)
-                this_seq = result_top_k.indices[tdx].unsqueeze(-1)
+                this_seq = result_topk.indices[tdx].unsqueeze(-1)
                 tgt_base = torch.cat([tgt_base, this_seq], dim=-1)
                 input_beam[belong[tdx]].append(tgt_base)
                 prob_beam[belong[tdx]].append(ep + probs[tdx])
                 alive_beam[belong[tdx]].append(not_end)
-                col_beam[belong[tdx]].append(
-                    1. * is_fst - 1. * is_sed + n_close[tdx]
-                )
+                cls_update = 1. * is_fst - 1. * is_sed + nclose[tdx]
+                col_beam[belong[tdx]].append(cls_update)
                 belong_beam[belong[tdx]].append(belong[tdx].repeat(size))
 
             for i in range(batch_size):
@@ -104,18 +126,16 @@ def beam_search(
                 belong_beam[i] = belong_beam[i][beam_top_k.indices]
 
             tgt = torch.stack(input_beam, dim=0)
-            probs = torch.stack(prob_meab, dim=0)
-            alive_beam = torch.stack(alive_beam, dim=0)
+            probs = torch.stack(prob_beam, dim=0)
+            alive = torch.stack(alive_beam, dim=0)
             nclose = torch.stack(col_beam, dim=0)
-            belong_beam = torch.stack(belong_beam, dim=0)
+            belong = torch.stack(belong_beam, dim=0)
 
-    answer = [(probs[idx].item(), t.tolist()) for idx, t in enumerate(tgt)]
-    answer.sort(reverse=True)
     out_answers = []
 
     for i in range(batch_size):
         answer = [
-            (probs[idx].item(), t.tolist())
+            (probs[i][idx].item(), t.tolist())
             for idx, t in enumerate(tgt[i])
         ]
         answer.sort(reverse=True)
@@ -129,8 +149,8 @@ def beam_search(
 
 
 if __name__ == '__main__':
-	parser = argparse.ArgumentParser()
-	parser.add_argument(
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
         '--mole_layer', default=5, type=int,
         help='the number of layer for mole gnn'
     )
@@ -179,10 +199,6 @@ if __name__ == '__main__':
     # data config
 
     parser.add_argument(
-        '--transductive', action='store_true',
-        help='the use transductive training or not'
-    )
-    parser.add_argument(
         '--data_path', required=True, type=str,
         help='the path containing the data'
     )
@@ -193,56 +209,54 @@ if __name__ == '__main__':
     )
 
     parser.add_argument(
-    	'--token_ckpt', type=str, required=True,
-    	help='the path of ckpt containing tokenizer'
+        '--token_ckpt', type=str, required=True,
+        help='the path of ckpt containing tokenizer'
     )
 
     # inference config
     parser.add_argument(
-    	'--ckpt_path', type=str, required=True,
-    	help='the path of pretrained model weight'
+        '--ckpt_path', type=str, required=True,
+        help='the path of pretrained model weight'
     )
     parser.add_argument(
-    	'--output_dir', type=str, required=True,
-    	help='the path for outputing results'
+        '--output_dir', type=str, required=True,
+        help='the path for outputing results'
     )
     parser.add_argument(
-    	'--beam', type=int, default=10,
-    	help='the beam size for beam search'
+        '--beam', type=int, default=10,
+        help='the beam size for beam search'
     )
     parser.add_argument(
-    	'--max_len', type=int, default=300,
-    	help='the max length for model'
+        '--max_len', type=int, default=300,
+        help='the max length for model'
     )
     parser.add_argument(
-    	'--save_every', type=int, default=1000,
-    	help='the step for saving'
+        '--save_every', type=int, default=1000,
+        help='the step for saving'
     )
-
 
     args = parser.parse_args()
     print(args)
 
     fix_seed(args.seed)
 
-
     if torch.cuda.is_available() and args.device >= 0:
         device = torch.device(f'cuda:{args.device}')
     else:
         device = torch.device('cpu')
 
-
     with open(args.token_ckpt, 'rb') as Fin:
-    	label_mapper = pickle.load(Fin)
+        label_mapper = pickle.load(Fin)
 
-    all_data, label_mapper = load_uspto_mt_500_gen(args.data_path, remap=label_mapper)
+    all_data, label_mapper = load_uspto_mt_500_gen(
+        args.data_path, remap=label_mapper)
 
     all_net = SepNetwork(all_data[0] + all_data[1] + all_data[2])
 
     test_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data[2]],
         labels=[x['label'] for x in all_data[2]]
-    ) 
+    )
 
     mol_gnn = GATBase(
         num_layers=args.mole_layer, num_heads=args.heads, dropout=0,
@@ -272,31 +286,31 @@ if __name__ == '__main__':
 
     prediction_results, rxn2gt = [], {}
 
-    for x in range(0, len(test_set), args.bs):
-    	end_idx = min(len(test_set), x + args.bs)
-    	batch_data = [test_set[t] for t in list(range(x, end_idx))]
-    	query_keys = []
+    for x in tqdm(range(0, len(test_set), args.bs)):
+        end_idx = min(len(test_set), x + args.bs)
+        batch_data = [test_set[t] for t in list(range(x, end_idx))]
+        query_keys = []
 
-    	for idx, (k, l) in enumerate(batch_data):
-    		query_keys.append(k)
-    		if k not in rxn2gt:
-    			rxn2gt[k] = []
-    		rxn2gt.append(''.join(l[1: -1]).replace('`', '.'))
+        for idx, (k, l) in enumerate(batch_data):
+            query_keys.append(k)
+            if k not in rxn2gt:
+                rxn2gt[k] = []
+            rxn2gt[k].append(''.join(l[1: -1]).replace('`', '.'))
 
-    	results = beam_search(
-    		model, label_mapper, query_keys, all_net, args.reaction_hop, 
-    		device, max_neighbor=args.max_neighbor, size=args.beam, 
-    		max_len=args.max_len, end_token='<END>'
-    	)
+        results = beam_search(
+            model, label_mapper, query_keys, all_net, args.reaction_hop,
+            device, max_neighbor=args.max_neighbors, size=args.beam,
+            max_len=args.max_len, end_token='<END>'
+        )
 
-    	for idx, p in enumerate(results):
-    		prediction_results.append({
-    			'query': query_keys[idx],
-    			'query_key': query_keys[idx],
-    			'prob_answer': p
-    		})
+        for idx, p in enumerate(results):
+            prediction_results.append({
+                'query': query_keys[idx],
+                'query_key': query_keys[idx],
+                'prob_answer': p
+            })
 
-    	if len(prediction_results) % args.save_every < args.bs:
+        if len(prediction_results) % args.save_every < args.bs:
             outx = {
                 'rxn2gt': rxn2gt,
                 'answer': prediction_results,
@@ -305,13 +319,3 @@ if __name__ == '__main__':
 
             with open(out_file, 'w') as Fout:
                 json.dump(outx, Fout, indent=4)
-
-
-
-
-
-
-
-
-
-
