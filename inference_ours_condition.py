@@ -4,7 +4,7 @@ from utils.dataset import reaction_graph_final
 from utils.data_utils import generate_square_subsequent_mask, fix_seed
 import argparse
 from utils.sep_network import SepNetwork
-from utils.data_utils import load_uspto_mt_500_gen
+from utils.data_utils import parse_uspto_condition_raw
 import torch
 from utils.dataset import ConditionDataset
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
@@ -13,24 +13,15 @@ import time
 from tqdm import tqdm
 
 
-def beam_search(
-    model, tokenizer, samples, G, hop, device, size=10,
-    max_neighbor=None, end_token='<END>', max_len=300,
-):
+def beam_search(model, samples, G, hop, device, size=10, max_neighbor=None):
     model = model.eval()
     batch_size = len(samples)
     end_id = tokenizer.token2idx[end_token]
 
     probs = torch.Tensor([[0]] * batch_size).to(device)
-    alive = torch.BoolTensor([[True]] * batch_size).to(device)
-    nclose = torch.Tensor([[0]] * batch_size).to(device)
-    belong = torch.LongTensor(list(range(batch_size)))
-    belong = belong.unsqueeze(dim=-1).to(device)
     tgt = torch.LongTensor([[[]]] * batch_size).to(device)
 
-    # [bs, 1, 1] / [bs, beam, len]
-    fst_idx = tokenizer.token2idx['(']
-    sec_idx = tokenizer.token2idx[")"]
+    x_types = torch.LongTensor([0, 1, 1, 2]).to(device)
 
     mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
         edge_types, semi_graphs, edge_semi, smkey2idx, required_ids, \
@@ -51,101 +42,67 @@ def beam_search(
         )
 
         # [bs, dim]
-        for idx in range(max_len):
-            input_beam = [[] for _ in range(batch_size)]
-            alive_beam = [[] for _ in range(batch_size)]
-            belong_beam = [[] for _ in range(batch_size)]
-            col_beam = [[] for _ in range(batch_size)]
-            prob_beam = [[] for _ in range(batch_size)]
+        for idx in range(5):
+        	input_beam = []
+        	prob_beam = []
 
-            ended = torch.logical_not(alive)
-            for idx, p in enumerate(ended):
-                if torch.any(p).item():
-                    tgt_pad = torch.ones_like(tgt[idx, p, :1]).long()
-                    tgt_pad = tgt_pad.to(device) * end_id
-                    this_cand = torch.cat([tgt[idx, p], tgt_pad], dim=-1)
-
-                    input_beam[idx].append(this_cand)
-                    prob_beam[idx].append(probs[idx, p])
-                    alive_beam[idx].append(alive[idx, p])
-                    col_beam[idx].append(nclose[idx, p])
-                    belong_beam[idx].append(belong[idx, p])
-
-            if torch.all(ended).item():
-                break
-
-            qmemory = memory.unsqueeze(dim=1).repeat(1, tgt.shape[1], 1)[alive]
-            tgt_mask = generate_square_subsequent_mask(tgt.shape[2] + 1)
+            qmemory = memory.unsqueeze(dim=1).repeat(1, tgt.shape[1], 1)
+            tgt_mask = generate_square_subsequent_mask(idx + 1)
             tgt_mask = tgt_mask.to(device)
 
-            tgt = tgt[alive]
-            probs = probs[alive]
-            nclose = nclose[alive]
-            belong = belong[alive]
+            tgt = tgt.reshape(-1, tgt.shape[-1])
+            probs = probs.reshape(-1)
+            this_types = x_types[: idx].repeat(tgt.shape[0], 1)
 
             result = model.decode(
                 memory=qmemory, labels=tgt, attn_mask=tgt_mask,
-                key_padding_mask=None, seq_types=None
+                key_padding_mask=None, seq_types=this_types
             )
             # [n_cand, len, n_class]
             result = torch.log_softmax(result[:, -1], dim=-1)
-            result_topk = result.topk(size, dim=-1, largest=True)
+            # [n_cand, n_class]
+            
+            to_pad = torch.arange(0, result.shape[-1], 1)
+            to_pad = to_pad.reshape(1, -1, 1).to(device)
+            to_pad = to_pad.repeat(result.shape[0], 1, 1)
+            tgt_base = tgt.unsqueeze(dim=1).repeat(1, tgt.shape[-1], 1)
+            # [n_cand, n_class, len]
+            
+            new_seq = torch.cat([tgt_base, to_pad], dim=-1)
+            # [n_cand, n_class, len + 1] 
+            probs = result + probs.unsqueeze(dim=-1)
+            # [n_cand, n_class]
+            
+            input_beam = tgt.reshape(batch_size, -1, tgt.shape[-1])
+            prob_beam = probs.reshape(batch_size, -1)
 
-            for tdx, ep in enumerate(result_topk.values):
-                not_end = result_topk.indices[tdx] != end_id
-                is_fst = result_topk.indices[tdx] == fst_idx
-                is_sed = result_topk.indices[tdx] == sec_idx
+            result_topk = prob_beam.topk(size, dim=-1, largest=True)
+            x_idx = torch.arange(0, batch_size, 1).reshape(-1, 1).to(device)
 
-                tgt_base = tgt[tdx].repeat(size, 1)
-                this_seq = result_topk.indices[tdx].unsqueeze(-1)
-                tgt_base = torch.cat([tgt_base, this_seq], dim=-1)
-                input_beam[belong[tdx]].append(tgt_base)
-                prob_beam[belong[tdx]].append(ep + probs[tdx])
-                alive_beam[belong[tdx]].append(not_end)
-                cls_update = 1. * is_fst - 1. * is_sed + nclose[tdx]
-                col_beam[belong[tdx]].append(cls_update)
-                belong_beam[belong[tdx]].append(belong[tdx].repeat(size))
+            tgt = input_beam[x_idx, result_topk.indices]
+            probs = result_topk.values()
 
-            for i in range(batch_size):
-                input_beam[i] = torch.cat(input_beam[i], dim=0)
-                prob_beam[i] = torch.cat(prob_beam[i], dim=0)
-                alive_beam[i] = torch.cat(alive_beam[i], dim=0)
-                col_beam[i] = torch.cat(col_beam[i], dim=0)
-                belong_beam[i] = torch.cat(belong_beam[i], dim=0)
-
-                illegal = (col_beam[i] < 0) | \
-                    ((~alive_beam[i]) & (col_beam[i] != 0))
-
-                prob_beam[i][illegal] = -2e9
-                beam_top_k = prob_beam[i].topk(size, dim=0)
-
-                input_beam[i] = input_beam[i][beam_top_k.indices]
-                prob_beam[i] = beam_top_k.values
-                alive_beam[i] = alive_beam[i][beam_top_k.indices]
-                col_beam[i] = col_beam[i][beam_top_k.indices]
-                belong_beam[i] = belong_beam[i][beam_top_k.indices]
-
-            tgt = torch.stack(input_beam, dim=0)
-            probs = torch.stack(prob_beam, dim=0)
-            alive = torch.stack(alive_beam, dim=0)
-            nclose = torch.stack(col_beam, dim=0)
-            belong = torch.stack(belong_beam, dim=0)
 
     out_answers = []
-
     for i in range(batch_size):
         answer = [
             (probs[i][idx].item(), t.tolist())
             for idx, t in enumerate(tgt[i])
         ]
         answer.sort(reverse=True)
-        out_answers.append([])
-        for y, x in answer:
-            r_smiles = tokenizer.decode1d(x)
-            r_smiles = r_smiles.replace(end_token, "")
-            r_smiles = r_smiles.replace('<UNK>', '').replace('`', '.')
-            out_answers[i].append((y, r_smiles))
+        out_answers.append(answer)
     return out_answers
+
+
+
+def all_pre(x):
+	return (
+		x,
+		(x[0], x[1], x[2], x[4], x[3]),
+		(x[0], x[2], x[1], x[4], x[3]),
+		(x[0], x[2], x[1], x[3], x[4]),
+	)
+
 
 
 if __name__ == '__main__':
@@ -235,6 +192,7 @@ if __name__ == '__main__':
         help='the step for saving'
     )
 
+
     args = parser.parse_args()
     print(args)
 
@@ -248,12 +206,15 @@ if __name__ == '__main__':
     with open(args.token_ckpt, 'rb') as Fin:
         label_mapper = pickle.load(Fin)
 
-    all_data, label_mapper = load_uspto_mt_500_gen(
-        args.data_path, remap=label_mapper
+
+    with open(data_path) as Fin:
+        raw_info = json.load(Fin)
+
+    all_data, _ = parse_uspto_condition_raw(raw_info, label_mapper)
+    
+    all_net = SepNetwork(
+    	all_data['train_data'] + all_data['val_data'] + all_data['test_data']
     )
-
-    all_net = SepNetwork(all_data[0] + all_data[1] + all_data[2])
-
     test_set = ConditionDataset(
         reactions=[x['canonical_rxn'] for x in all_data[2]],
         labels=[x['label'] for x in all_data[2]]
@@ -269,17 +230,19 @@ if __name__ == '__main__':
         dropout=0, embedding_dim=args.dim, negative_slope=args.negative_slope
     )
 
-    pos_env = PositionalEncoding(args.dim, 0, maxlen=1024)
+    pos_env = PositionalEncoding(args.dim, 0, maxlen=128)
 
     model = FullModel(
         gnn1=mol_gnn, gnn2=net_gnn, PE=pos_env, net_dim=args.dim,
         heads=args.heads, dropout=0, dec_layers=args.decoder_layer,
         n_words=len(label_mapper), mol_dim=args.dim,
-        with_type=False, init_rxn=args.init_rxn
+        with_type=True, init_rxn=args.init_rxn, ntypes=3
     ).to(device)
+
 
     weight = torch.load(args.ckpt_path, map_location=device)
     model.load_state_dict(weight)
+
 
     model = model.eval()
 
@@ -299,37 +262,5 @@ if __name__ == '__main__':
             query_keys.append(k)
             if k not in rxn2gt:
                 rxn2gt[k] = []
-            rxn2gt[k].append(''.join(l[1: -1]).replace('`', '.'))
-
-        results = beam_search(
-            model, label_mapper, query_keys, all_net, args.reaction_hop,
-            device, max_neighbor=args.max_neighbors, size=args.beam,
-            max_len=args.max_len, end_token='<END>'
-        )
-
-        for idx, p in enumerate(results):
-            prediction_results.append({
-                'query': query_keys[idx],
-                'query_key': query_keys[idx],
-                'prob_answer': p
-            })
-
-        if len(prediction_results) % args.save_every < args.bs:
-            outx = {
-                'rxn2gt': rxn2gt,
-                'answer': prediction_results,
-                'args': args.__dict__
-            }
-
-            with open(out_file, 'w') as Fout:
-                json.dump(outx, Fout, indent=4)
-
-    with open(out_file, 'w') as Fout:
-        outx = {
-            'rxn2gt': rxn2gt,
-            'answer': prediction_results,
-            'args': args.__dict__
-        }
-
-        with open(out_file, 'w') as Fout:
-            json.dump(outx, Fout, indent=4)
+            rxn2gt[k].extend(all_pre(l))
+            
