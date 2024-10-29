@@ -16,7 +16,6 @@ from tqdm import tqdm
 def beam_search(model, samples, G, hop, device, size=10, max_neighbor=None):
     model = model.eval()
     batch_size = len(samples)
-    end_id = tokenizer.token2idx[end_token]
 
     probs = torch.Tensor([[0]] * batch_size).to(device)
     tgt = torch.LongTensor([[[]]] * batch_size).to(device)
@@ -43,14 +42,13 @@ def beam_search(model, samples, G, hop, device, size=10, max_neighbor=None):
 
         # [bs, dim]
         for idx in range(5):
-        	input_beam = []
-        	prob_beam = []
-
             qmemory = memory.unsqueeze(dim=1).repeat(1, tgt.shape[1], 1)
             tgt_mask = generate_square_subsequent_mask(idx + 1)
             tgt_mask = tgt_mask.to(device)
 
-            tgt = tgt.reshape(-1, tgt.shape[-1])
+            n_cand = tgt.shape[0] * tgt.shape[1]
+            qmemory = qmemory.reshape(n_cand, -1)
+            tgt = tgt.reshape(n_cand, tgt.shape[-1])
             probs = probs.reshape(-1)
             this_types = x_types[: idx].repeat(tgt.shape[0], 1)
 
@@ -61,27 +59,26 @@ def beam_search(model, samples, G, hop, device, size=10, max_neighbor=None):
             # [n_cand, len, n_class]
             result = torch.log_softmax(result[:, -1], dim=-1)
             # [n_cand, n_class]
-            
+
             to_pad = torch.arange(0, result.shape[-1], 1)
             to_pad = to_pad.reshape(1, -1, 1).to(device)
             to_pad = to_pad.repeat(result.shape[0], 1, 1)
-            tgt_base = tgt.unsqueeze(dim=1).repeat(1, tgt.shape[-1], 1)
+            tgt_base = tgt.unsqueeze(dim=1).repeat(1, result.shape[-1], 1)
             # [n_cand, n_class, len]
-            
+
             new_seq = torch.cat([tgt_base, to_pad], dim=-1)
-            # [n_cand, n_class, len + 1] 
+            # [n_cand, n_class, len + 1]
             probs = result + probs.unsqueeze(dim=-1)
             # [n_cand, n_class]
-            
-            input_beam = tgt.reshape(batch_size, -1, tgt.shape[-1])
+
+            input_beam = new_seq.reshape(batch_size, -1, new_seq.shape[-1])
             prob_beam = probs.reshape(batch_size, -1)
 
             result_topk = prob_beam.topk(size, dim=-1, largest=True)
             x_idx = torch.arange(0, batch_size, 1).reshape(-1, 1).to(device)
 
             tgt = input_beam[x_idx, result_topk.indices]
-            probs = result_topk.values()
-
+            probs = result_topk.values
 
     out_answers = []
     for i in range(batch_size):
@@ -94,15 +91,13 @@ def beam_search(model, samples, G, hop, device, size=10, max_neighbor=None):
     return out_answers
 
 
-
 def all_pre(x):
-	return (
-		x,
-		(x[0], x[1], x[2], x[4], x[3]),
-		(x[0], x[2], x[1], x[4], x[3]),
-		(x[0], x[2], x[1], x[3], x[4]),
-	)
-
+    return (
+        x,
+        (x[0], x[1], x[2], x[4], x[3]),
+        (x[0], x[2], x[1], x[4], x[3]),
+        (x[0], x[2], x[1], x[3], x[4]),
+    )
 
 
 if __name__ == '__main__':
@@ -184,14 +179,9 @@ if __name__ == '__main__':
         help='the beam size for beam search'
     )
     parser.add_argument(
-        '--max_len', type=int, default=300,
-        help='the max length for model'
-    )
-    parser.add_argument(
         '--save_every', type=int, default=1000,
         help='the step for saving'
     )
-
 
     args = parser.parse_args()
     print(args)
@@ -206,18 +196,17 @@ if __name__ == '__main__':
     with open(args.token_ckpt, 'rb') as Fin:
         label_mapper = pickle.load(Fin)
 
-
-    with open(data_path) as Fin:
+    with open(args.data_path) as Fin:
         raw_info = json.load(Fin)
 
-    all_data, _ = parse_uspto_condition_raw(raw_info, label_mapper)
-    
+    all_data = parse_uspto_condition_raw(raw_info, label_mapper)
+
     all_net = SepNetwork(
-    	all_data['train_data'] + all_data['val_data'] + all_data['test_data']
+        all_data['train_data'] + all_data['val_data'] + all_data['test_data']
     )
     test_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data[2]],
-        labels=[x['label'] for x in all_data[2]]
+        reactions=[x['canonical_rxn'] for x in all_data['test_data']],
+        labels=[x['label'] for x in all_data['test_data']]
     )
 
     mol_gnn = GATBase(
@@ -239,10 +228,8 @@ if __name__ == '__main__':
         with_type=True, init_rxn=args.init_rxn, ntypes=3
     ).to(device)
 
-
     weight = torch.load(args.ckpt_path, map_location=device)
     model.load_state_dict(weight)
-
 
     model = model.eval()
 
@@ -263,4 +250,35 @@ if __name__ == '__main__':
             if k not in rxn2gt:
                 rxn2gt[k] = []
             rxn2gt[k].extend(all_pre(l))
-            
+
+        results = beam_search(
+            model, query_keys, all_net, args.reaction_hop, device,
+            size=args.beam, max_neighbor=args.max_neighbors
+        )
+
+        for idx, p in enumerate(results):
+            prediction_results.append({
+                'query': query_keys[idx],
+                'query_key': query_keys[idx],
+                'prob_answer': p
+            })
+
+        if len(prediction_results) % args.save_every < args.bs:
+            outx = {
+                'rxn2gt': rxn2gt,
+                'answer': prediction_results,
+                'args': args.__dict__
+            }
+
+            with open(out_file, 'w') as Fout:
+                json.dump(outx, Fout, indent=4)
+
+    with open(out_file, 'w') as Fout:
+        outx = {
+            'rxn2gt': rxn2gt,
+            'answer': prediction_results,
+            'args': args.__dict__
+        }
+
+        with open(out_file, 'w') as Fout:
+            json.dump(outx, Fout, indent=4)
