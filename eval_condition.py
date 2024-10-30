@@ -1,5 +1,4 @@
 import torch
-from utils import canonical_rxn
 import argparse
 import json
 import numpy as np
@@ -17,8 +16,6 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
-    modified = False
-
     results = []
     to_display = [1, 3, 5, 10, 20, 30, 50]
 
@@ -30,10 +27,6 @@ if __name__ == '__main__':
         real_answer[k] = set(tuple(x) for x in v)
 
     for line in tqdm(INFO['answer']):
-        if 'query_key' not in line:
-            line['query_key'] = canonical_rxn(line['query'])
-            modified = True
-
         this_line = np.zeros(args.beams)
         for idx, (prob, res) in enumerate(line['prob_answer']):
             res = tuple(res)
@@ -45,9 +38,6 @@ if __name__ == '__main__':
 
     results = np.stack(results, axis=0)
     results = np.mean(results, axis=0)
-    if modified:
-        with open(args.file_path, 'w') as Fout:
-            json.dump(INFO, Fout)
     print('[Model Config]')
     print(INFO['args'])
     print('[Result]')
