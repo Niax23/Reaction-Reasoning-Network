@@ -8,7 +8,6 @@ import time
 
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ExponentialLR
-import pandas
 from tqdm import tqdm
 
 from utils.data_utils import (

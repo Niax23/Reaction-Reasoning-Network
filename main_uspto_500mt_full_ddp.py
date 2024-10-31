@@ -1,4 +1,11 @@
 import torch
+import argparse
+import os
+import time
+import pickle
+import json
+
+
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import ExponentialLR
 
@@ -12,12 +19,6 @@ from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
 from ddp_training import (
     train_uspto_500mt_full_ddp, eval_uspto_500mt_full_ddp
 )
-import argparse
-import os
-import time
-import pickle
-import json
-
 
 import torch.distributed as torch_dist
 import torch.multiprocessing as torch_mp
