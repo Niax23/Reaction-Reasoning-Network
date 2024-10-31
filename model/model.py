@@ -580,24 +580,18 @@ class AblationModel(nn.Module):
         self.rxn_linear = torch.nn.Linear(mol_dim * 2, net_dim)
         self.net_dim = net_dim
         self.mole_dim = mol_dim
-        self.edge_emb = torch.nn.ParameterDict({
-            'reactant': torch.nn.Parameter(torch.randn(net_dim)),
-            'product': torch.nn.Parameter(torch.randn(net_dim)),
-        })
-        self.semi_init = torch.nn.Parameter(torch.randn(1, 1, net_dim))
         self.pooler = torch.nn.MultiheadAttention(
             embed_dim=net_dim, kdim=mol_dim, vdim=mol_dim,
             num_heads=heads, batch_first=True, dropout=dropout
         )
         self.node_type = torch.nn.ParameterDict({
-            'reactant': torch.nn.Parameter(torch.randn(net_dim)),
-            'product': torch.nn.Parameter(torch.randn(net_dim))
+            'reactant': torch.nn.Parameter(torch.randn(1, 1, net_dim)),
+            'product': torch.nn.Parameter(torch.randn(1, 1, net_dim))
         })
         t_layer = torch.nn.TransformerEncoderLayer(
             net_dim, heads, dim_feedforward=net_dim << 1,
             batch_first=True, dropout=dropout
         )
-        self.edge_linear = torch.nn.Linear(mol_dim + net_dim, net_dim)
         self.out_layer = torch.nn.Sequential(
             torch.nn.Linear(net_dim, net_dim),
             torch.nn.ReLU(),
@@ -611,14 +605,12 @@ class AblationModel(nn.Module):
             assert ntypes is not None, "require type numbers"
             self.type_embs = torch.nn.Embedding(ntypes, net_dim)
 
-    def encode(
-        self, reac_graphs, prod_graphs, n_reac, n_prod, n_reaction, reactant_pairs=None, product_pairs=None
-    ):
+    def encode(self, reac_graphs, prod_graphs, batch_size, rpairs, ppairs):
+        reac_num = reac_graphs.batch_mask.shape[0]
+        prod_num = prod_graphs.batch_mask.shape[0]
 
-        reac_keys = self.node_type['reactant'].unsqueeze(
-            0).repeat(n_reac, 1).unsqueeze(1)
-        prod_keys = self.node_type['product'].unsqueeze(
-            0).repeat(n_prod, 1).unsqueeze(1)
+        reac_keys = self.node_type['reactant']repeat(reac_num, 1, 1)
+        prod_keys = self.node_type['product'].repeat(prod_num, 1, 1)
 
         reac_feats, _ = self.gnn1(reac_graphs)
         reac_feats = graph2batch(reac_feats, reac_graphs.batch_mask)
@@ -640,10 +632,20 @@ class AblationModel(nn.Module):
 
         assert reactant_pairs is not None and product_pairs is not None, \
             "Require reaction comp mapper for rxns embedding generation"
-        rxn_embs = average_mole(
-            reac_embs, prod_embs, reactant_pairs, product_pairs, n_reaction
-        )
-        return self.rxn_linear(rxn_embs)
+        rxn_embs = [
+            self.average_pool(reac_embs, rpairs, batch_size, reac_num),
+            self.average_pool(prod_embs, ppairs, batch_size, prod_num)
+        ]
+        return self.rxn_linear(torch.cat(rxn_embs, dim=-1))
+
+    def average_pool(self, x, pairs, batch_size, mol_cnt):
+        resutls = torch.zeros(batch_size, x.shape[-1]).to(x)
+        divx = torch.zeros(batch_size).to(x)
+        n_cnt = torch.ones(mol_cnt).to(x)
+
+        resutls.index_add_(dim=0, index=pairs, source=x)
+        divx.index_add_(dim=0, index=pairs, source=x)
+        return resutls / divx.unsqueeze(dim=-1)
 
     def decode(
         self, memory, labels, attn_mask, key_padding_mask=None, seq_types=None
@@ -661,12 +663,13 @@ class AblationModel(nn.Module):
         return self.out_layer(seq_output)
 
     def forward(
-        self, reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
-        labels, attn_mask, reactant_pairs=None, product_pairs=None,
+        self, reac_graphs, prod_graphs, batch_size,
+        labels, attn_mask, reactant_pairs, product_pairs,
         key_padding_mask=None, seq_types=None,
     ):
         reaction_embs = self.encode(
-            reac_graphs,  prod_graphs, n_reac, n_prod, n_nodes, reactant_pairs, product_pairs
+            reac_graphs, prod_graphs, batch_size,
+            reactant_pairs, product_pairs
         )
 
         result = self.decode(
