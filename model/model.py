@@ -609,7 +609,7 @@ class AblationModel(nn.Module):
         reac_num = reac_graphs.batch_mask.shape[0]
         prod_num = prod_graphs.batch_mask.shape[0]
 
-        reac_keys = self.node_type['reactant']repeat(reac_num, 1, 1)
+        reac_keys = self.node_type['reactant'].repeat(reac_num, 1, 1)
         prod_keys = self.node_type['product'].repeat(prod_num, 1, 1)
 
         reac_feats, _ = self.gnn1(reac_graphs)

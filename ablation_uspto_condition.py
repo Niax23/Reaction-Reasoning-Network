@@ -228,7 +228,7 @@ if __name__ == '__main__':
 
         if args.early_stop >= 5 and ep > max(10, args.early_stop):
             tx = log_info['valid_metric'][-args.early_stop:]
-            tx = [[x['overall'] for x in tx]]
+            tx = [x['overall'] for x in tx]
             # keys = [
             #     'overall', 'catalyst', 'solvent1', 'solvent2',
             #     'reagent1', 'reagent2'

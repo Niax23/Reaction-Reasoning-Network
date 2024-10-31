@@ -732,7 +732,8 @@ def train_uspto_condition_ablation(
         warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
 
     for data in tqdm(loader):
-        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, label_types, n_reac, n_prod, n_nodes = data
+        reac_graphs, prod_graphs, reactant_pairs, product_pairs, \
+            label_types, seq, batch_size = data
 
         reac_graphs = reac_graphs.to(device)
         prod_graphs = prod_graphs.to(device)
@@ -744,8 +745,8 @@ def train_uspto_condition_ablation(
         sub_mask = generate_square_subsequent_mask(5, device)
 
         res = model(
-            reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
-            labels=seq[:, :-1], attn_mask=sub_mask,
+            reac_graphs=reac_graphs, prod_graphs=prod_graphs,
+            batch_size=batch_size, labels=seq[:, :-1], attn_mask=sub_mask,
             reactant_pairs=reactant_pairs, product_pairs=product_pairs,
             key_padding_mask=None, seq_types=label_types
         )
@@ -763,8 +764,8 @@ def train_uspto_condition_ablation(
 def eval_uspto_condition_ablation(loader, model, device):
     model, accs, gt = model.eval(), [], []
     for data in tqdm(loader):
-        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, label_types, n_reac, n_prod, n_nodes = data
-
+        reac_graphs, prod_graphs, reactant_pairs, product_pairs, \
+            label_types, seq, batch_size = data
         reac_graphs = reac_graphs.to(device)
         prod_graphs = prod_graphs.to(device)
         reactant_pairs = reactant_pairs.to(device)
@@ -776,8 +777,8 @@ def eval_uspto_condition_ablation(loader, model, device):
 
         with torch.no_grad():
             res = model(
-                reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
-                labels=seq[:, :-1], attn_mask=sub_mask,
+                reac_graphs=reac_graphs, prod_graphs=prod_graphs,
+                batch_size=batch_size, labels=seq[:, :-1], attn_mask=sub_mask,
                 reactant_pairs=reactant_pairs, product_pairs=product_pairs,
                 key_padding_mask=None, seq_types=label_types
             )
