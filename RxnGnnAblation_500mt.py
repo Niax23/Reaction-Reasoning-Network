@@ -9,7 +9,7 @@ from utils.dataset import ConditionDataset, uspto_500mt_ablation
 
 
 from model import GATBase, AblationModel, PositionalEncoding
-from training import train_uspto_500mt_ablation, eval_uspto_500mt_ablation
+from training import train_500mt_ablation, eval_500mt_ablation
 import argparse
 import os
 import time
@@ -191,17 +191,17 @@ if __name__ == '__main__':
 
     for ep in range(args.epoch):
         print(f'[INFO] training epoch {ep}')
-        loss = train_uspto_500mt_ablation(
+        loss = train_500mt_ablation(
             loader=train_loader, model=model, optimizer=optimizer,
             device=device, warmup=(ep < args.warmup), tokener=label_mapper,
             pad_idx=label_mapper.token2idx['<PAD>']
         )
-        val_results = eval_uspto_500mt_ablation(
+        val_results = eval_500mt_ablation(
             val_loader, model, device, label_mapper,
             end_idx=label_mapper.token2idx['<END>'],
             pad_idx=label_mapper.token2idx['<PAD>']
         )
-        test_results = eval_uspto_500mt_ablation(
+        test_results = eval_500mt_ablation(
             test_loader, model, device, label_mapper,
             end_idx=label_mapper.token2idx['<END>'],
             pad_idx=label_mapper.token2idx['<PAD>']

@@ -651,7 +651,7 @@ def eval_uspto_500mt_full(loader, model, device, tokener, end_idx, pad_idx):
     return accx.mean().item()
 
 
-def train_uspto_500mt_ablation(
+def train_500mt_ablation(
     loader, model, optimizer, tokener, device, pad_idx, warmup=False
 ):
     model, los_cur = model.train(), []
@@ -660,7 +660,8 @@ def train_uspto_500mt_ablation(
         warmup_sher = warmup_lr_scheduler(optimizer, warmup_iters, 5e-2)
 
     for data in tqdm(loader):
-        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, n_reac, n_prod, n_nodes = data
+        reac_graphs, prod_graphs, reactant_pairs, \
+            product_pairs, seq, batch_size = data
 
         reac_graphs = reac_graphs.to(device)
         prod_graphs = prod_graphs.to(device)
@@ -674,10 +675,10 @@ def train_uspto_500mt_ablation(
         )
 
         res = model(
-            reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
-            labels=seq[:, :-1], attn_mask=diag_mask,
+            reac_graphs=reac_graphs, prod_graphs=prod_graphs,
+            batch_size=batch_size, labels=seq[:, 1:-1], attn_mask=diag_mask,
             reactant_pairs=reactant_pairs, product_pairs=product_pairs,
-            key_padding_mask=trans_op_mask,
+            key_padding_mask=trans_op_mask, seq_types=None
         )
         loss = calc_trans_loss(res, seq[:, 1:], -1000)
         loss.backward()
@@ -690,10 +691,11 @@ def train_uspto_500mt_ablation(
     return np.mean(los_cur)
 
 
-def eval_uspto_500mt_ablation(loader, model, device, tokener, end_idx, pad_idx):
+def eval_500mt_ablation(loader, model, device, tokener, end_idx, pad_idx):
     model, accx = model.eval(), []
     for data in tqdm(loader):
-        reac_graphs, prod_graphs, reactant_pairs, product_pairs, seq, n_reac, n_prod, n_nodes = data
+        reac_graphs, prod_graphs, reactant_pairs, \
+            product_pairs, seq, batch_size = data
 
         reac_graphs = reac_graphs.to(device)
         prod_graphs = prod_graphs.to(device)
@@ -708,10 +710,10 @@ def eval_uspto_500mt_ablation(loader, model, device, tokener, end_idx, pad_idx):
 
         with torch.no_grad():
             res = model(
-                reac_graphs, prod_graphs, n_reac, n_prod, n_nodes,
-                labels=seq[:, :-1], attn_mask=diag_mask,
-                reactant_pairs=reactant_pairs, product_pairs=product_pairs,
-                key_padding_mask=trans_op_mask,
+                reac_graphs=reac_graphs, prod_graphs=prod_graphs,
+                batch_size=batch_size, labels=seq[:, 1:-1], seq_types=None,
+                attn_mask=diag_mask, reactant_pairs=reactant_pairs,
+                product_pairs=product_pairs, key_padding_mask=trans_op_mask
             )
 
         trans_pred = convert_log_into_label(res, mod='softmax')
