@@ -239,7 +239,7 @@ def ablation_graph(batch):
         reactant_pairs.extend([idx] * len(info['reactants']))
         product_pairs.extend([idx] * len(info['products']))
         reac_moles.extend(info['reactants'])
-        product_pairs.extend(info['products'])
+        prod_moles.extend(info['products'])
 
     reac_moles = [smiles2graph(x, with_amap=False) for x in reac_moles]
     prod_moles = [smiles2graph(x, with_amap=False) for x in prod_moles]

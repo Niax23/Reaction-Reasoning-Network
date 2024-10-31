@@ -629,9 +629,6 @@ class AblationModel(nn.Module):
             key_padding_mask=torch.logical_not(prod_graphs.batch_mask)
         )
         prod_embs = prod_embs.squeeze(1)
-
-        assert reactant_pairs is not None and product_pairs is not None, \
-            "Require reaction comp mapper for rxns embedding generation"
         rxn_embs = [
             self.average_pool(reac_embs, rpairs, batch_size, reac_num),
             self.average_pool(prod_embs, ppairs, batch_size, prod_num)
@@ -644,7 +641,7 @@ class AblationModel(nn.Module):
         n_cnt = torch.ones(mol_cnt).to(x)
 
         resutls.index_add_(dim=0, index=pairs, source=x)
-        divx.index_add_(dim=0, index=pairs, source=x)
+        divx.index_add_(dim=0, index=pairs, source=n_cnt)
         return resutls / divx.unsqueeze(dim=-1)
 
     def decode(
