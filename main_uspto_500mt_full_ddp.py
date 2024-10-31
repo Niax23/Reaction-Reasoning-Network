@@ -5,6 +5,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from utils.data_utils import fix_seed, load_uspto_mt_500_gen, check_early_stop
 from utils.sep_network import SepNetwork
 from utils.dataset import ConditionDataset, uspto_500mt_final
+from utils.tokenlizer import Tokenizer
 
 
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
@@ -120,6 +121,13 @@ def main_worker(worker_idx, args, log_dir, model_dir, remap):
         with_type=False, init_rxn=args.init_rxn
     ).to(device)
 
+    if args.ckpt_path != '':
+        assert args.token_ckpt != '', 'Require pretrained tokenzier'
+        print(f'[INFO] Process {worker_idx} load {args.ckpt_path}')
+        weight = torch.load(args.ckpt_path, map_location=device)
+        model.load_state_dict(weight)
+        print(f'[INFO] Process {worker_idx} loaded')
+
     model = torch.nn.parallel.DistributedDataParallel(
         model, device_ids=[worker_idx], output_device=worker_idx,
         find_unused_parameters=True
@@ -141,7 +149,8 @@ def main_worker(worker_idx, args, log_dir, model_dir, remap):
     best_pref, best_ep = None, None
 
     for ep in range(args.epoch):
-        print(f'[INFO] training epoch {ep}')
+        if verbose:
+            print(f'[INFO] training epoch {ep}')
         train_sampler.set_epoch(ep)
         loss = train_uspto_500mt_full_ddp(
             loader=train_loader, model=model, optimizer=optimizer,
@@ -177,8 +186,8 @@ def main_worker(worker_idx, args, log_dir, model_dir, remap):
                 json.dump(log_info, Fout, indent=4)
 
             val_json = log_info['valid_metric'][-1]
-            if best_pref is None or val_json['overall'] > best_pref:
-                best_pref, best_ep = val_json['overall'], ep
+            if best_pref is None or val_json['trans_acc'] > best_pref:
+                best_pref, best_ep = val_json['trans_acc'], ep
                 torch.save(model.module.state_dict(), model_dir)
 
         if ep >= args.warmup and ep >= args.step_start:
@@ -313,6 +322,14 @@ if __name__ == '__main__':
         '--port', type=int, default=12345,
         help='the port for ddp nccl communication'
     )
+    parser.add_argument(
+        '--token_ckpt', type=str, default='',
+        help='the path containing tokenizer'
+    )
+    parser.add_argument(
+        '--ckpt_path', type=str, default='',
+        help='the path containing checkpoints'
+    )
 
     args = parser.parse_args()
     print(args)
@@ -321,9 +338,14 @@ if __name__ == '__main__':
 
     log_dir, model_dir, token_dir = make_dir(args)
 
-    with open(os.path.join(args.data_path, 'all_tokens.json')) as F:
-        reag_list = json.load(F)
-    remap = Tokenizer(reag_list, {'<UNK>', '<CLS>', '<END>', '<PAD>', '`'})
+    if args.token_ckpt == '':
+        with open(os.path.join(args.data_path, 'all_tokens.json')) as F:
+            reag_list = json.load(F)
+        remap = Tokenizer(reag_list, {'<UNK>', '<CLS>', '<END>', '<PAD>', '`'})
+    else:
+        assert args.ckpt_path != '', 'Require checkpoint given'
+        with open(args.token_ckpt, 'rb') as Fin:
+            remap = pickle.load(Fin)
 
     with open(token_dir, 'wb') as Fout:
         pickle.dump(remap, Fout)
