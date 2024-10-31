@@ -1,5 +1,5 @@
 import torch
-from utils.data_utils import  generate_tgt_mask
+from utils.data_utils import  generate_tgt_mask,generate_square_subsequent_mask
 from utils.graph_utils import smiles2graph
 from utils.dataset import graph_col_fn
 
@@ -46,6 +46,60 @@ def make_rxn_input(rxn):
 
     return reac_graphs, prod_graphs, reactant_pairs, product_pairs,  reactant_id_counter, product_id_counter, 1
 
+def beam_search_pred(
+    model,  rxn, device,  begin_id,size=2
+):
+    model = model.eval()
+    tgt = torch.LongTensor([]).reshape(1,0).to(device)
+    probs = torch.Tensor([0]).to(device)
+
+    reac_graphs, prod_graphs, reactant_pairs, product_pairs, n_reac, n_prod, n_node = make_rxn_input(rxn)
+    reac_graphs = reac_graphs.to(device)
+    prod_graphs = prod_graphs.to(device)
+    reactant_pairs = reactant_pairs.to(device)
+    product_pairs = product_pairs.to(device)
+
+    with torch.no_grad():
+        memory = model.encode(reac_graphs,prod_graphs,n_reac,n_prod,n_node,reactant_pairs,product_pairs )
+        for i in range(5):
+            input_beams, prob_beams = [], []
+            real_size = tgt.shape[0]
+            reaction_emb = memory.repeat(real_size, 1)
+            padding_generator = torch.cat((torch.full((tgt.shape[0], 1), begin_id).to(device), tgt), dim=1)
+            tgt_mask = generate_square_subsequent_mask(tgt.shape[1]+1,device)
+            # print(reaction_emb.shape)
+            # print(tgt.shape)
+            # print(trans_op_mask.shape)
+            # print(diag_mask.shape)
+            result = model.decode(
+                reaction_emb,tgt, tgt_mask, key_padding_mask=None
+            )
+            result = torch.log_softmax(result[:, -1], dim=-1)
+            result_top_k = result.topk(size, dim=-1, largest=True, sorted=True)
+            print(result_top_k)
+
+            
+
+            for tdx, ep in enumerate(result_top_k.values):
+                tgt_base = tgt[tdx].repeat(size, 1)
+                print(tgt_base)
+                this_seq = result_top_k.indices[tdx].unsqueeze(dim=-1)
+                tgt_base = torch.cat([tgt_base, this_seq], dim=-1)
+                print(tgt_base)
+                input_beams.append(tgt_base)
+                prob_beams.append(ep + probs[tdx])
+
+            input_beams = torch.cat(input_beams, dim=0)
+            prob_beams = torch.cat(prob_beams, dim=0)
+
+            beam_top_k = prob_beams.topk(
+                size, dim=0, largest=True, sorted=True)
+            tgt = input_beams[beam_top_k.indices]
+            probs = beam_top_k.values
+
+    answer = [(probs[idx].item(), t[:].tolist()) for idx, t in enumerate(tgt)]
+    answer.sort(reverse=True)
+    return answer
 
 def beam_search(
     model, tokenizer, rxn, device, max_len, size=2,begin_token='<CLS>', end_token='<END>'
