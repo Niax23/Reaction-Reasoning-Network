@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import ExponentialLR
 from utils.data_utils import fix_seed, load_uspto_1kk
 from utils.data_utils import check_early_stop
 from utils.sep_network import SepNetwork
-from utils.dataset import ConditionDataset, reaction_graph_colfn
+from utils.dataset import ConditionDataset, reaction_graph_final
 
 
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
@@ -16,15 +16,41 @@ import pickle
 import json
 
 
-def make_dir(args):
-    timestamp = time.time()
-    detail_dir = os.path.join(args.base_log, f'{timestamp}')
-    if not os.path.exists(detail_dir):
-        os.makedirs(detail_dir)
-    log_dir = os.path.join(detail_dir, 'log.json')
-    model_dir = os.path.join(detail_dir, 'model.pth')
-    token_dir = os.path.join(detail_dir, 'token.pkl')
-    return log_dir, model_dir, token_dir
+class col_x:
+    def __init__(self, G, hop, max_neighbor=None):
+        self.G = G
+        self.hop = hop
+        self.max_neighbor = max_neighbor
+
+    def fwd(self, batch):
+        return reaction_graph_final(
+            batch, self.G, self.hop, self.max_neighbor
+        ), batch
+
+
+def get_x(model, loader, mapper):
+    key2idx, tdx, all_f, lbs, model = {}, 0, [], [], model.eval()
+
+    for data, raw in loader:
+        mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
+            edge_types, semi_graphs, semi_keys, smkey2idx, required_ids, \
+            reactant_pairs, product_pairs, n_node = data
+        features = model.encode(
+            mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+            rxn_ids=rxn_ids, required_ids=required_ids, edge_index=edge_index,
+            edge_types=edge_types, semi_graphs=semi_graphs,
+            semi_keys=semi_keys, semi_key2idxs=smkey2idx, n_nodes=n_node,
+            reactant_pairs=reactant_pairs, product_pairs=product_pairs
+        )
+
+        for x in raw:
+            key2idx[x] = tdx
+            tdx += 1
+            lbs.append(mapper[x])
+        all_f.append(features)
+
+    all_f = torch.cat(all_f, dim=0)
+    return {'smiles2idx': key2idx, 'labels': lbs, 'features': all_f}
 
 
 if __name__ == '__main__':
@@ -38,10 +64,6 @@ if __name__ == '__main__':
     parser.add_argument(
         '--dim', type=int, default=300,
         help='the num of dim for the model'
-    )
-    parser.add_argument(
-        '--dropout', type=float, default=0.1,
-        help='the dropout for model'
     )
     parser.add_argument(
         '--reaction_hop', type=int, default=1,
@@ -64,47 +86,17 @@ if __name__ == '__main__':
         help='use pretrained features to build rxn feat or not'
     )
 
-    # training args
+    # inference args
 
-    parser.add_argument(
-        '--lr', type=float, default=1e-4,
-        help='the learning rate for training'
-    )
     parser.add_argument(
         '--bs', type=int, default=32,
         help='the batch size for training'
-    )
-    parser.add_argument(
-        '--epoch', type=int, default=200,
-        help='the number of epochs for training'
-    )
-
-    parser.add_argument(
-        '--early_stop', type=int, default=0,
-        help='the number of epochs for checking early stop, 0 for invalid'
-    )
-
-    parser.add_argument(
-        '--step_start', type=int, default=10,
-        help='the step to start lr decay'
-    )
-    parser.add_argument(
-        '--base_log', type=str, default='log_pretrain',
-        help='the path for contraining log'
     )
     parser.add_argument(
         '--num_workers', type=int, default=8,
         help='the number of worker for dataloader'
     )
 
-    parser.add_argument(
-        '--warmup', type=int, default=0,
-        help='the number of epochs for warmup'
-    )
-    parser.add_argument(
-        '--lrgamma', type=float, default=1,
-        help='the lr decay rate for training'
-    )
     parser.add_argument(
         '--seed', type=int, default=2023,
         help='the random seed for training'
@@ -116,11 +108,6 @@ if __name__ == '__main__':
     )
 
     # data config
-
-    parser.add_argument(
-        '--transductive', action='store_true',
-        help='the use transductive training or not'
-    )
     parser.add_argument(
         '--train_val_path', required=True, type=str,
         help='the path containing train and val data'
@@ -133,6 +120,15 @@ if __name__ == '__main__':
     parser.add_argument(
         '--max_neighbors', type=int, default=20,
         help='max neighbors when sampling'
+    )
+    parser.add_argument(
+        '--output_dir', type=str, required=True,
+        help='the path of output dir'
+    )
+
+    parser.add_argument(
+        '--checkpoint', type=str, required=True,
+        help='the path of pretrained checkpoint'
     )
 
     args = parser.parse_args()
@@ -149,106 +145,55 @@ if __name__ == '__main__':
 
     train_val_data = load_uspto_1kk(args.train_val_path)
     test_data = load_uspto_1kk(args.test_data)
-    all_net = SepNetwork(all_data + test_data)
+    all_net = SepNetwork(train_val_data + test_data)
 
-    train_val_set = [x['canonical_rxn'] for x in train_val_data],
+    data2label = {
+        x['canonical_rxn']: x['label'] for x
+        in train_val_data + test_data
+    }
+
+    train_val_set = [x['canonical_rxn'] for x in train_val_data]
     test_set = [x['canonical_rxn'] for x in test_data]
 
-    train_loader = DataLoader(
-        train_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=True, collate_fn=lambda x: reaction_graph_colfn(
-            x, train_net, args.reaction_hop, args.max_neighbors
-        )
-    )
+    train_val_set = list(set(train_val_set))
+    test_set = list(set(test_set))
 
-    val_loader = DataLoader(
-        val_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: reaction_graph_colfn(
-            x, all_net, args.reaction_hop, args.max_neighbors
-        )
+    xcf = col_x(all_net, args.reaction_hop, args.max_neighbors)
+
+    train_val_loader = DataLoader(
+        train_val_set, batch_size=args.bs, num_workers=args.num_workers,
+        shuffle=False, collate_fn=xcf.fwd
     )
 
     test_loader = DataLoader(
         test_set, batch_size=args.bs, num_workers=args.num_workers,
-        shuffle=False, collate_fn=lambda x: reaction_graph_colfn(
-            x, all_net, args.reaction_hop, args.max_neighbors
-        )
+        shuffle=False, collate_fn=xcf.fwd
     )
 
     mol_gnn = GATBase(
-        num_layers=args.mole_layer, num_heads=args.heads, dropout=args.dropout,
+        num_layers=args.mole_layer, num_heads=args.heads, dropout=0,
         embedding_dim=args.dim, negative_slope=args.negative_slope
     )
 
     net_gnn = RxnNetworkGNN(
         num_layers=args.reaction_hop * 2 + 1, num_heads=args.heads,
-        dropout=args.dropout, embedding_dim=args.dim,
-        negative_slope=args.negative_slope
+        dropout=0, embedding_dim=args.dim, negative_slope=args.negative_slope
     )
 
-    pos_env = PositionalEncoding(args.dim, args.dropout, maxlen=128)
+    pos_env = PositionalEncoding(args.dim, 0, maxlen=128)
 
     model = FullModel(
         gnn1=mol_gnn, gnn2=net_gnn, PE=pos_env, net_dim=args.dim,
-        heads=args.heads, dropout=args.dropout, dec_layers=args.decoder_layer,
+        heads=args.heads, dropout=0, dec_layers=args.decoder_layer,
         n_words=len(label_mapper), mol_dim=args.dim,
         with_type=True, ntypes=3, init_rxn=args.init_rxn
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    lr_sher = ExponentialLR(optimizer, gamma=args.lrgamma, verbose=True)
+    weight = torch.load(args.checkpoint, map_location=device)
+    model.load_state_dict(weight)
+    model = model.eval()
 
-    log_info = {
-        'args': args.__dict__, 'train_loss': [],
-        'valid_metric': [], 'test_metric': []
-    }
+    train_val_data = get_x(model, train_val_loader, data2label)
+    test_data = get_x(model, test_loader, data2label)
 
-    with open(token_dir, 'wb') as Fout:
-        pickle.dump(label_mapper, Fout)
-
-    with open(log_dir, 'w') as Fout:
-        json.dump(log_info, Fout)
-
-    best_pref, best_ep = None, None
-
-    for ep in range(args.epoch):
-        print(f'[INFO] training epoch {ep}')
-        loss = train_uspto_condition_full(
-            loader=train_loader, model=model, optimizer=optimizer,
-            device=device, warmup=(ep < args.warmup)
-        )
-        val_results = eval_uspto_condition_full(val_loader, model, device)
-        test_results = eval_uspto_condition_full(test_loader, model, device)
-
-        print('[Train]:', loss)
-        print('[Valid]:', val_results)
-        print('[Test]:', test_results)
-
-        log_info['train_loss'].append(loss)
-        log_info['valid_metric'].append(val_results)
-        log_info['test_metric'].append(test_results)
-
-        if ep >= args.warmup and ep >= args.step_start:
-            lr_sher.step()
-
-        with open(log_dir, 'w') as Fout:
-            json.dump(log_info, Fout, indent=4)
-
-        if best_pref is None or val_results['overall'] > best_pref:
-            best_pref, best_ep = val_results['overall'], ep
-            torch.save(model.state_dict(), model_dir)
-
-        if args.early_stop >= 5 and ep > max(10, args.early_stop):
-            tx = log_info['valid_metric'][-args.early_stop:]
-            # keys = [
-            #     'overall', 'catalyst', 'solvent1', 'solvent2',
-            #     'reagent1', 'reagent2'
-            # ]
-            # tx = [[x[key] for x in tx] for key in keys]
-            tx = [[x['overall'] for x in tx]]
-            if check_early_stop(*tx):
-                break
-
-    print(f'[INFO] best acc epoch: {best_ep}')
-    print(f'[INFO] best valid loss: {log_info["valid_metric"][best_ep]}')
-    print(f'[INFO] best test loss: {log_info["test_metric"][best_ep]}')
+    torch.save({'train': train_val_data, 'test': test_data}, args.output_dir)
