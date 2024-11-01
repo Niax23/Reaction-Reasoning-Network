@@ -171,3 +171,21 @@ def convert_log_into_label(logits, mod='sigmoid'):
     else:
         raise NotImplementedError(f'Invalid mode {mod}')
     return pred
+
+
+def load_uspto_1kk(data_path):
+    F = open(data_path)
+    setx = json.load(F)
+    F.close()
+    rxn_infos = []
+    for lin in setx:
+        this_line = {
+            'canonical_rxn': lin['clear_cano_rxn'],
+            'mapped_rxn': lin['new_mapped_rxn'],
+            'reactants': lin['reac_list'],
+            'products': [lin['products']],
+            'mapped_reac': lin['mapped_reac_list'],
+            'mapped_prod': [lin['new_mapped_rxn'].split('>>')[1]]
+        }
+        rxn_infos[px].append(this_line)
+    return rxn_infos
