@@ -186,7 +186,7 @@ def load_uspto_1kk(data_path):
             'products': [lin['products']],
             'mapped_reac': lin['mapped_reac_list'],
             'mapped_prod': [lin['new_mapped_rxn'].split('>>')[1]],
-            'label': lin['hash_template']
+            'label': lin['template_hash']
         }
-        rxn_infos[px].append(this_line)
+        rxn_infos.append(this_line)
     return rxn_infos

@@ -14,6 +14,7 @@ import os
 import time
 import pickle
 import json
+from tqdm import tqdm
 
 
 class col_x:
@@ -31,17 +32,27 @@ class col_x:
 def get_x(model, loader, mapper):
     key2idx, tdx, all_f, lbs, model = {}, 0, [], [], model.eval()
 
-    for data, raw in loader:
+    for data, raw in tqdm(loader):
         mole_graphs, mts, molecule_ids, rxn_ids, edge_index, \
             edge_types, semi_graphs, semi_keys, smkey2idx, required_ids, \
             reactant_pairs, product_pairs, n_node = data
-        features = model.encode(
-            mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
-            rxn_ids=rxn_ids, required_ids=required_ids, edge_index=edge_index,
-            edge_types=edge_types, semi_graphs=semi_graphs,
-            semi_keys=semi_keys, semi_key2idxs=smkey2idx, n_nodes=n_node,
-            reactant_pairs=reactant_pairs, product_pairs=product_pairs
-        )
+
+        mole_graphs = mole_graphs.to(device)
+        mole_graphs = mole_graphs.to(device)
+        edge_index = edge_index.to(device)
+        reactant_pairs = reactant_pairs.to(device)
+        product_pairs = product_pairs.to(device)
+        semi_graphs = semi_graphs.to(device)
+
+        with torch.no_grad():
+            features = model.encode(
+                mole_graphs=mole_graphs, mts=mts, molecule_ids=molecule_ids,
+                rxn_ids=rxn_ids, required_ids=required_ids,
+                edge_index=edge_index, edge_types=edge_types,
+                semi_graphs=semi_graphs, semi_keys=semi_keys,
+                semi_key2idxs=smkey2idx, n_nodes=n_node,
+                reactant_pairs=reactant_pairs, product_pairs=product_pairs
+            )
 
         for x in raw:
             key2idx[x] = tdx
@@ -130,6 +141,10 @@ if __name__ == '__main__':
         '--checkpoint', type=str, required=True,
         help='the path of pretrained checkpoint'
     )
+    parser.add_argument(
+        '--token_ckpt', type=str, required=True,
+        help='the path of pretrained tokenizer'
+    )
 
     args = parser.parse_args()
     print(args)
@@ -141,10 +156,11 @@ if __name__ == '__main__':
     else:
         device = torch.device('cpu')
 
-    log_dir, model_dir, token_dir = make_dir(args)
+    with open(args.token_ckpt, 'rb') as Fin:
+        label_mapper = pickle.load(Fin)
 
     train_val_data = load_uspto_1kk(args.train_val_path)
-    test_data = load_uspto_1kk(args.test_data)
+    test_data = load_uspto_1kk(args.test_path)
     all_net = SepNetwork(train_val_data + test_data)
 
     data2label = {
