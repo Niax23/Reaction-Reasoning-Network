@@ -58,7 +58,7 @@ def get_x(model, loader, mapper):
             key2idx[x] = tdx
             tdx += 1
             lbs.append(mapper[x])
-        all_f.append(features)
+        all_f.append(features.cpu())
 
     all_f = torch.cat(all_f, dim=0)
     return {'smiles2idx': key2idx, 'labels': lbs, 'features': all_f}
