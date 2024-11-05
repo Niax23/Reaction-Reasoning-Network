@@ -8,7 +8,9 @@ from utils.dataset import ConditionDataset, uspto_condition_ablation
 
 
 from model import GATBase, AblationModel, PositionalEncoding
-from training import train_uspto_condition_ablation, eval_uspto_condition_ablation
+from training import (
+    train_uspto_condition_ablation, eval_uspto_condition_ablation
+)
 import argparse
 import os
 import time
@@ -134,17 +136,17 @@ if __name__ == '__main__':
     all_data, label_mapper = parse_uspto_condition_data(args.data_path)
 
     train_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data['train_data']],
+        reactions=all_data['train_data'],
         labels=[x['label'] for x in all_data['train_data']]
     )
 
     val_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data['val_data']],
+        reactions=all_data['val_data'],
         labels=[x['label'] for x in all_data['val_data']]
     )
 
     test_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data['test_data']],
+        reactions=all_data['test_data'],
         labels=[x['label'] for x in all_data['test_data']]
     )
 
@@ -226,7 +228,7 @@ if __name__ == '__main__':
 
         if args.early_stop >= 5 and ep > max(10, args.early_stop):
             tx = log_info['valid_metric'][-args.early_stop:]
-            tx = [[x['overall'] for x in tx]]
+            tx = [x['overall'] for x in tx]
             # keys = [
             #     'overall', 'catalyst', 'solvent1', 'solvent2',
             #     'reagent1', 'reagent2'

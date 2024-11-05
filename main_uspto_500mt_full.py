@@ -266,7 +266,7 @@ if __name__ == '__main__':
             #     'reagent1', 'reagent2'
             # ]
             # tx = [[x[key] for x in tx] for key in keys]
-            if check_early_stop(*tx):
+            if check_early_stop(tx):
                 break
 
     print(f'[INFO] best acc epoch: {best_ep}')

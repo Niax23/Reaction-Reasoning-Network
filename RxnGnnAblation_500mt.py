@@ -9,7 +9,7 @@ from utils.dataset import ConditionDataset, uspto_500mt_ablation
 
 
 from model import GATBase, AblationModel, PositionalEncoding
-from training import train_uspto_500mt_ablation, eval_uspto_500mt_ablation
+from training import train_500mt_ablation, eval_500mt_ablation
 import argparse
 import os
 import time
@@ -135,18 +135,15 @@ if __name__ == '__main__':
     all_data, label_mapper = load_uspto_mt_500_gen(args.data_path)
 
     train_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data[0]],
-        labels=[x['label'] for x in all_data[0]]
+        reactions=all_data[0], labels=[x['label'] for x in all_data[0]]
     )
 
     val_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data[1]],
-        labels=[x['label'] for x in all_data[1]]
+        reactions=all_data[1], labels=[x['label'] for x in all_data[1]]
     )
 
     test_set = ConditionDataset(
-        reactions=[x['canonical_rxn'] for x in all_data[2]],
-        labels=[x['label'] for x in all_data[2]]
+        reactions=all_data[2], labels=[x['label'] for x in all_data[2]]
     )
 
     train_loader = DataLoader(
@@ -173,8 +170,7 @@ if __name__ == '__main__':
     model = AblationModel(
         gnn1=mol_gnn, PE=pos_env, net_dim=args.dim,
         heads=args.heads, dropout=args.dropout, dec_layers=args.decoder_layer,
-        n_words=len(label_mapper), mol_dim=args.dim,
-        with_type=False
+        n_words=len(label_mapper), mol_dim=args.dim, with_type=False
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -195,17 +191,17 @@ if __name__ == '__main__':
 
     for ep in range(args.epoch):
         print(f'[INFO] training epoch {ep}')
-        loss = train_uspto_500mt_ablation(
+        loss = train_500mt_ablation(
             loader=train_loader, model=model, optimizer=optimizer,
             device=device, warmup=(ep < args.warmup), tokener=label_mapper,
             pad_idx=label_mapper.token2idx['<PAD>']
         )
-        val_results = eval_uspto_500mt_ablation(
+        val_results = eval_500mt_ablation(
             val_loader, model, device, label_mapper,
             end_idx=label_mapper.token2idx['<END>'],
             pad_idx=label_mapper.token2idx['<PAD>']
         )
-        test_results = eval_uspto_500mt_ablation(
+        test_results = eval_500mt_ablation(
             test_loader, model, device, label_mapper,
             end_idx=label_mapper.token2idx['<END>'],
             pad_idx=label_mapper.token2idx['<PAD>']
@@ -232,12 +228,7 @@ if __name__ == '__main__':
 
         if args.early_stop >= 5 and ep > max(10, args.early_stop):
             tx = log_info['valid_metric'][-args.early_stop:]
-            # keys = [
-            #     'overall', 'catalyst', 'solvent1', 'solvent2',
-            #     'reagent1', 'reagent2'
-            # ]
-            # tx = [[x[key] for x in tx] for key in keys]
-            if check_early_stop(*tx):
+            if check_early_stop(tx):
                 break
 
     print(f'[INFO] best acc epoch: {best_ep}')
