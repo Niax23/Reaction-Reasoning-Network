@@ -29,9 +29,9 @@ def get_x(model, loader, mapper):
             )
 
         for x in raw:
-            key2idx[x] = tdx
+            key2idx[x['canonical_rxn']] = tdx
             tdx += 1
-            lbs.append(mapper[x])
+            lbs.append(mapper[x['canonical_rxn']])
         all_f.append(features.cpu())
 
     all_f = torch.cat(all_f, dim=0)
@@ -121,13 +121,31 @@ if __name__ == '__main__':
     train_val_data = load_uspto_1kk(args.train_val_path)
     test_data = load_uspto_1kk(args.test_path)
 
+    data2label = {
+        x['canonical_rxn']: x['label'] for x
+        in train_val_data + test_data
+    }
+
+    shown_train, shown_test = set(), set()
+    new_train, new_test = [], []
+
+    for x in train_val_data:
+        if x['canonical_rxn'] not in shown_train:
+            shown_train.add(x['canonical_rxn'])
+            new_train.append(x)
+
+    for x in test_data:
+        if x['canonical_rxn'] not in shown_test:
+            shown_test.add(x['canonical_rxn'])
+            new_test.append(x)
+
     train_val_loader = DataLoader(
-        train_val_data, batch_size=args.bs, num_workers=args.num_workers,
+        new_train, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: (ablation_graph(x), x, len(x))
     )
 
     test_loader = DataLoader(
-        test_data, batch_size=args.bs, num_workers=args.num_workers,
+        new_test, batch_size=args.bs, num_workers=args.num_workers,
         shuffle=False, collate_fn=lambda x: (ablation_graph(x), x, len(x))
     )
 
