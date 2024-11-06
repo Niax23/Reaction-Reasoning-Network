@@ -113,10 +113,6 @@ if __name__ == '__main__':
     # data config
 
     parser.add_argument(
-        '--transductive', action='store_true',
-        help='the use transductive training or not'
-    )
-    parser.add_argument(
         '--data_path', required=True, type=str,
         help='the path containing the data'
     )

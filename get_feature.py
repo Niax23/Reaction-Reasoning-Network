@@ -33,7 +33,6 @@ def get_x(model, loader, mapper):
             reactant_pairs, product_pairs, n_node = data
 
         mole_graphs = mole_graphs.to(device)
-        mole_graphs = mole_graphs.to(device)
         edge_index = edge_index.to(device)
         reactant_pairs = reactant_pairs.to(device)
         product_pairs = product_pairs.to(device)
@@ -60,7 +59,7 @@ def get_x(model, loader, mapper):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Parser for main experiment')
+    parser = argparse.ArgumentParser('Parser for feature inference')
     # model definition
 
     parser.add_argument(
