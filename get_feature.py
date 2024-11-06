@@ -1,19 +1,14 @@
 import torch
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import ExponentialLR
 
 from utils.data_utils import fix_seed, load_uspto_1kk
-from utils.data_utils import check_early_stop
 from utils.sep_network import SepNetwork
 from utils.dataset import ConditionDataset, reaction_graph_final
 
 
 from model import GATBase, RxnNetworkGNN, PositionalEncoding, FullModel
 import argparse
-import os
-import time
 import pickle
-import json
 from tqdm import tqdm
 
 
